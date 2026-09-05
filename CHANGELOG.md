@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **release:** the root changelog now records every version a release cuts, including one whose
+  entries a previous cut had already moved. Before, such a release left the record silent and the
+  release-record gate failed hours later on an unrelated pull request (#656).
+
 ## [create-theokit 2.0.0-next.1] - 2026-09-04
 
 ### Changed
