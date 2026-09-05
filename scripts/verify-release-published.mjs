@@ -181,7 +181,11 @@ function describeFailure(pkg, said) {
   const at = `${pkg.name}@${pkg.version}`
   if (said === 'errored') return `${at} — the PUBLISH itself failed for this package`
   if (said === 'unattempted') return `${at} was NOT published — and the publish never attempted it`
-  return `${at} could not be confirmed on the registry, and there is no publish log to say why`
+  // No log to read: this is the guard in its original mode, and the original wording is the one
+  // the operator and `verify-release-published.test.ts` both expect. Saying anything softer here
+  // would trade a contract written from the 2026-08-24 incident for prose about a log that does
+  // not exist.
+  return `${at} was NOT published`
 }
 
 // What the publish SAID, for the versions the registry has not shown yet. npm registers a version
