@@ -118,3 +118,6 @@ __pycache__/
 halt-loop-prompts/
 clear-project-output/
 code-review-output/
+
+# Written by `pnpm release`; read by verify-release-published.mjs within the same job.
+.release-publish.log

@@ -41,8 +41,15 @@
  * Usage: `node scripts/verify-release-published.mjs`
  */
 import { execFileSync } from 'node:child_process'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+import { classifyFromPublishLog } from './publish-log.mjs'
+
+// Written by `pnpm release` (see package.json): the combined output of `changeset publish`,
+// which is the only place the WRITE outcome is recorded. Absent on a local run that skipped
+// the publish, and absence is reported as unknown rather than as success.
+const PUBLISH_LOG = '.release-publish.log'
 
 function publishablePackages() {
   return readdirSync('packages', { withFileTypes: true })
@@ -166,10 +173,41 @@ for (const delay of RETRY_DELAYS_MS) {
   pending = stillPending
 }
 
-const missing = pending.length
-for (const pkg of pending) {
-  console.error(`✗ ${pkg.name}@${pkg.version} was NOT published`)
+/**
+ * Say what was actually established, which is not the same for the three ways a version can be
+ * missing from the registry after a publish ran.
+ */
+function describeFailure(pkg, said) {
+  const at = `${pkg.name}@${pkg.version}`
+  if (said === 'errored') return `${at} — the PUBLISH itself failed for this package`
+  if (said === 'unattempted') return `${at} was NOT published — and the publish never attempted it`
+  return `${at} could not be confirmed on the registry, and there is no publish log to say why`
 }
+
+// What the publish SAID, for the versions the registry has not shown yet. npm registers a version
+// minutes after `publish` returns (5m04s for `@theokit/sdk-cache@1.0.2` on 2026-09-04), so a read
+// that has not resolved is not evidence that nothing was written — and `was NOT published` is a
+// claim this guard was making without having established it (usetheokit/theokit#652).
+const publishLog = existsSync(PUBLISH_LOG) ? readFileSync(PUBLISH_LOG, 'utf8') : undefined
+const lagging = []
+const failed = []
+for (const pkg of pending) {
+  const said = classifyFromPublishLog(publishLog, pkg.name)
+  if (said === 'written') lagging.push(pkg)
+  else failed.push({ pkg, said })
+}
+
+for (const pkg of lagging) {
+  console.log(
+    `… ${pkg.name}@${pkg.version} is not visible yet, and the publish reported writing it. ` +
+      'Registration lags the call by minutes; this is not a failed release.',
+  )
+}
+for (const { pkg, said } of failed) {
+  console.error(`✗ ${describeFailure(pkg, said)}`)
+}
+
+const missing = failed.length
 
 // The second axis. `changesets publish` and the tag push live in one step, so a push that fails
 // after a successful publish leaves the run red and indistinguishable from one that published
