@@ -28,6 +28,7 @@
  *    settle (EC-8).
  */
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs'
+import { transcriptPath } from '@theokit/sdk/persistence'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -47,7 +48,13 @@ function seedSession(id: string): { cwd: string; root: string } {
   const cwd = mkdtempSync(join(tmpdir(), 'gc-project-'))
   const dir = join(root, 'projects', cwd.replace(/[/\\]/g, '-'))
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, `${id}.jsonl`), '{"type":"user"}\n')
+  // Through the SDK's own path builder, not a hand-rolled name. SDK 5.x names the file with a
+  // one-way hash of the id, so a fixture that spells the name itself writes where production code
+  // no longer looks — and the record carries the id, which is where it now survives (#654).
+  writeFileSync(
+    transcriptPath(root, cwd, id),
+    `${JSON.stringify({ type: 'user', sessionId: id })}\n`,
+  )
   return { cwd, root }
 }
 
@@ -84,7 +91,7 @@ describe('deleteSession — the registry seam accepts what the ecosystem actuall
   it('test_registry_removed_before_the_file_is_unlinked', async () => {
     // EC-3. A failing remover must leave the transcript on disk: recoverable beats unrepairable.
     const { cwd, root } = seedSession('s3')
-    const transcript = join(root, 'projects', cwd.replace(/[/\\]/g, '-'), 's3.jsonl')
+    const transcript = transcriptPath(root, cwd, 's3')
     const result = await deleteSession('s3', {
       cwd,
       root,
@@ -193,9 +200,13 @@ function projectWithTwoSessions(): { cwd: string; root: string; older: string } 
   const cwd = mkdtempSync(join(tmpdir(), 'gc-project-'))
   const dir = join(root, 'projects', cwd.replace(/[/\\]/g, '-'))
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'older.jsonl'), '{"type":"user"}\n')
-  utimesSync(join(dir, 'older.jsonl'), new Date(0), new Date(0))
-  writeFileSync(join(dir, 'newer.jsonl'), '{"type":"user"}\n')
+  for (const id of ['older', 'newer']) {
+    writeFileSync(
+      transcriptPath(root, cwd, id),
+      `${JSON.stringify({ type: 'user', sessionId: id })}\n`,
+    )
+  }
+  utimesSync(transcriptPath(root, cwd, 'older'), new Date(0), new Date(0))
   return { cwd, root, older: 'older' }
 }
 
@@ -207,7 +218,7 @@ function collectablePlan(cwd: string, root: string, id: string): TranscriptGCPla
     candidates: [
       {
         id,
-        transcript: join(root, 'projects', cwd.replace(/[/\\]/g, '-'), `${id}.jsonl`),
+        transcript: transcriptPath(root, cwd, id),
         modifiedAt: new Date(0),
       },
     ],
@@ -236,7 +247,7 @@ describe('runTranscriptGC — the sweep is bounded by the same rule', () => {
     // Same EC-3 invariant the single-session path holds: an orphan transcript is collected by the
     // next sweep; an orphan registry entry is collected by nothing.
     const { cwd, root, older } = projectWithTwoSessions()
-    const transcript = join(root, 'projects', cwd.replace(/[/\\]/g, '-'), `${older}.jsonl`)
+    const transcript = transcriptPath(root, cwd, older)
 
     await runTranscriptGC(collectablePlan(cwd, root, older), {
       apply: true,

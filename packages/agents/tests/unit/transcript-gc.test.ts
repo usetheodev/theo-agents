@@ -35,7 +35,8 @@ let root: string
 function writeTranscriptFile(sessionId: string, ageDays = 0): string {
   const path = transcriptPath(root, CWD, sessionId)
   mkdirSync(projectDirFor(CWD, root), { recursive: true })
-  writeFileSync(path, '{}\n', 'utf8')
+  // See the note in `session-lifecycle.test.ts`: the id lives in the record, not the filename.
+  writeFileSync(path, `${JSON.stringify({ type: 'user', sessionId })}\n`, 'utf8')
   const when = new Date(NOW - ageDays * 86_400_000)
   utimesSync(path, when, when)
   return path

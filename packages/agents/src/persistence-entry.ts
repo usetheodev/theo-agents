@@ -26,6 +26,11 @@ export {
   forkTranscript,
   isCorruptionError,
   JsonlParseError,
+  // `LiveTranscriptError` — the 5.x name for this class — deliberately does NOT cross. It does not
+  // exist in the 4.x half of the range this package supports, so re-exporting it unconditionally
+  // fails the DTS build against 4.52.1 (measured). The 5.x SDK keeps `LiveSessionError` working and
+  // deprecated, so the name that crosses is the one both majors have. Recorded as a gap with this
+  // reason in `subpath-coverage.test.ts`; revisit when the floor moves past 4.x.
   LiveSessionError,
   loadJsonl,
   openSqliteResilient,

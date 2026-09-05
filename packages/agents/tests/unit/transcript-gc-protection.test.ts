@@ -33,7 +33,9 @@ const NOW = 1_800_000_000_000
 function writeOldSession(id: string, ageDays: number): void {
   const path = transcriptPath(root, cwd, id)
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, `{"type":"user","uuid":"${id}"}\n`, 'utf8')
+  // `sessionId`, not just `uuid`: SDK 5.x names the FILE with a one-way hash of the id, so the
+  // record is where the id survives and where a listing reads it (usetheokit/theokit#654).
+  writeFileSync(path, `${JSON.stringify({ type: 'user', uuid: id, sessionId: id })}\n`, 'utf8')
   const stamp = new Date(NOW - ageDays * DAY)
 
   utimesSync(path, stamp, stamp)

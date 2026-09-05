@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **sdk:** `@theokit/sdk@5.x` is supported alongside 4.x. Plugins whose peer resolves to 5.0.x now
+  install against `theokit` instead of failing with ERESOLVE (#654).
+
 ### Fixed
 
 - **release:** the root changelog now records every version a release cuts, including one whose

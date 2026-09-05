@@ -68,12 +68,16 @@ interface Inside {
    * for the same reason; I did not follow the precedent and paid for it.
    */
   readonly via: string
+  /** Set when only one supported major has this. See `installedSdkMajor`. */
+  readonly sinceMajor?: number
 }
 
 /** A subpath deliberately out, with the reason — which is mandatory. */
 interface Fora {
   readonly verdict: 'out'
   readonly reason: string
+  /** Set when only one supported major publishes this subpath. See `installedSdkMajor`. */
+  readonly sinceMajor?: number
 }
 
 type Decision = Inside | Fora
@@ -84,7 +88,43 @@ type Decision = Inside | Fora
  * Adding a subpath to the SDK and not to this list breaks `test_every_sdk_subpath_has_a_verdict` —
  * deliberately.
  */
+/** The major of the SDK actually installed; the supported range spans two. */
+function installedSdkMajor(): number {
+  const require_ = createRequire(import.meta.url)
+  const { version } = require_('@theokit/sdk/package.json') as { version: string }
+  return Number(version.split('.')[0])
+}
+
 const DECISIONS: Record<string, Decision> = {
+  // ── Arrived with `@theokit/sdk@5.x`. Each needed a verdict, and the reason each is `out` is
+  // different — which is the point of recording decisions rather than an allowlist.
+  './providers': {
+    sinceMajor: 5,
+    verdict: 'out',
+    reason:
+      'Model-provider discovery (`listProviders`, `getProviderProfile`). This layer never chooses a ' +
+      'provider: it wires agents over whatever the SDK resolved, and a consumer that wants the ' +
+      'catalogue reaches the SDK directly. Crossing it here would put a second, staler copy of the ' +
+      'provider list in front of consumers for no capability they do not already have.',
+  },
+  './mcp-auth': {
+    sinceMajor: 5,
+    verdict: 'out',
+    reason:
+      'MCP OAuth token handling (`runPkceFlow`, `getTokens`, `setTokens`, `lockedRefresh`). Deliberately ' +
+      'NOT re-exported: these read and write credential storage, and a token seam should have one ' +
+      'import path so an audit of who touches tokens has one answer. Widening the surface to ' +
+      'credentials is the opposite of what a convenience barrel is for.',
+  },
+  './internal/memory-store': {
+    sinceMajor: 5,
+    verdict: 'out',
+    reason:
+      'A SEMVER-EXEMPT path, by the `internal/` prefix the SDK uses to say so. It exists for ' +
+      '`@theokit/sdk-memory` to share the store implementation (usetheokit/theokit-sdk#554 added ' +
+      '`memoryIndexRoot` to it). Crossing the layer with a path the SDK declares free to break in a ' +
+      'minor would hand consumers a stable-looking name over an unstable contract.',
+  },
   '.': {
     verdict: 'in',
     via: '../../src/index.js',
@@ -167,6 +207,13 @@ const DECISIONS: Record<string, Decision> = {
     symbols: [],
   },
   './persistence': {
+    gaps: {
+      LiveTranscriptError:
+        'the 5.x name for `LiveSessionError`, and absent from the 4.x half of the range this ' +
+        'package supports — re-exporting it unconditionally fails the DTS build against 4.52.1 ' +
+        '(measured). 5.x keeps the old name working and deprecated, so the name that crosses is ' +
+        'the one both majors have. Revisit when the floor moves past 4.x.',
+    },
     verdict: 'in',
     via: '../../src/persistence-entry.js',
     // M90 — this was `'sample'` with an EMPTY list, which is no sample at all. This file's own
@@ -318,7 +365,14 @@ describe('M78 T2.1 — subpath coverage policy', () => {
   it('test_the_list_does_not_reference_a_NONEXISTENT_subpath', () => {
     // The inverse: an orphan decision (a subpath removed from the SDK) must show up too, otherwise
     // the list accumulates dead entries and starts lying about what was decided.
-    const orphans = Object.keys(DECISIONS).filter((s) => !SUBPATHS_DO_SDK.includes(s))
+    // The range spans two majors (`^4.52.1 || ^5.0.0`), so a decision about a 5.x-only subpath is
+    // not rot when the tree is on 4.x — it is a decision waiting for the other half of the range.
+    const installedMajor = installedSdkMajor()
+    const orphans = Object.keys(DECISIONS).filter((s) => {
+      if (SUBPATHS_DO_SDK.includes(s)) return false
+      const since = DECISIONS[s].sinceMajor
+      return since === undefined || installedMajor >= since
+    })
     expect(
       orphans,
       `Decision for a subpath the SDK no longer publishes: ${orphans.join(', ')}`,

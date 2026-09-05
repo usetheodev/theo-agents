@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module'
+
 import { describe, expect, it } from 'vitest'
 
 import * as barrel from '../../src/index.js'
@@ -37,6 +39,8 @@ interface Inside {
   readonly verdict: 'in'
   /** Where it crosses, for a reader tracing the decision back to a block in `src/index.ts`. */
   readonly via: string
+  /** Set when only one supported major has this. See `installedSdkMajor`. */
+  readonly sinceMajor?: number
 }
 
 /** A root-bar value the layer deliberately does NOT re-export. */
@@ -44,6 +48,8 @@ interface Outside {
   readonly verdict: 'out'
   /** Why. Enforced non-trivial: an exception without a reason is never revisited. */
   readonly reason: string
+  /** Set when only one supported major exports this. See SINCE_5 below. */
+  readonly sinceMajor?: number
 }
 
 type Verdict = Inside | Outside
@@ -82,7 +88,33 @@ const R = {
     'credential/env resolution — M79 owns the decision to publish it, against the 4.49 surface not the 4.40 one',
 } as const
 
+/**
+ * The major of the SDK actually installed. The supported range spans two
+ * (`^4.52.1 || ^5.0.0`), so "this export is absent" only means the table has rotted when the
+ * installed major is one that should have it.
+ */
+function installedSdkMajor(): number {
+  const require_ = createRequire(import.meta.url)
+  const { version } = require_('@theokit/sdk/package.json') as { version: string }
+  return Number(version.split('.')[0])
+}
+
 const ROOT_BAR_VERDICTS: Record<string, Verdict> = {
+  // ── Arrived with `@theokit/sdk@5.x`; `sinceMajor` keeps them out of the orphan guard on 4.x.
+  Workflow: { sinceMajor: 5, verdict: 'out', reason: R.PUBLIC_NO_CONSUMER },
+  agentStep: { sinceMajor: 5, verdict: 'out', reason: R.PUBLIC_NO_CONSUMER },
+  fn: { sinceMajor: 5, verdict: 'out', reason: R.PUBLIC_NO_CONSUMER },
+  isValidTaskId: { sinceMajor: 5, verdict: 'out', reason: R.SCHEDULING },
+  TASK_RESERVED_PREFIXES: { sinceMajor: 5, verdict: 'out', reason: R.SCHEDULING },
+  readSessionMessages: {
+    sinceMajor: 5,
+    verdict: 'out',
+    reason:
+      'reads a stored session back as structured messages, so a host that repointed a session can ' +
+      're-render it. Real and useful, and nothing in this repo or the measured downstream product ' +
+      'calls it yet — the layer that would is a UI, not this one. Crossing it now would publish ' +
+      'surface on a guess about who wants it; revisit on the first real ask',
+  },
   // ── IN — errors + core primitives (M58/M63/M78 blocks) ──────────────────────────────────────
   Agent: { verdict: 'in', via: 'M103 narrowed re-export' },
   AgentDisposedError: { verdict: 'in', via: "export * from '@theokit/sdk/errors'" },
@@ -207,7 +239,13 @@ describe('M67 T5 — root-bar coverage policy', () => {
   it('test_the_verdict_list_does_not_reference_a_NONEXISTENT_export', () => {
     // The inverse. Without it the table rots, holding decisions about symbols the SDK dropped.
     const present = new Set(rootBarValues())
-    const orphans = Object.keys(ROOT_BAR_VERDICTS).filter((name) => !present.has(name))
+    const installedMajor = installedSdkMajor()
+    const orphans = Object.keys(ROOT_BAR_VERDICTS).filter((name) => {
+      if (present.has(name)) return false
+      const since = ROOT_BAR_VERDICTS[name].sinceMajor
+      // Absent AND expected on this major — see the note on `sinceMajor`.
+      return since === undefined || installedMajor >= since
+    })
     expect(orphans, 'these have a verdict but the SDK no longer exports them').toEqual([])
   })
 
