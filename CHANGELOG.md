@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **agents:** a declared `.claude/` root now reaches custom commands, not only hooks, skills and
+  subagents. Same trust gate; the project's own `.theokit/commands/` still wins a name collision.
 - **sdk:** `@theokit/sdk@5.x` is supported alongside 4.x. Plugins whose peer resolves to 5.0.x now
   install against `theokit` instead of failing with ERESOLVE (#654).
 
