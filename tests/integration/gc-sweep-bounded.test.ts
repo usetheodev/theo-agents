@@ -12,6 +12,7 @@
  * session tests nothing while appearing to pass.
  */
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
+import { transcriptPath } from '@theokit/sdk/persistence'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -34,8 +35,11 @@ function agedProject(count: number): { cwd: string; root: string; dir: string } 
   mkdirSync(dir, { recursive: true })
   const old = new Date(Date.now() - 400 * 86_400_000)
   for (let i = 0; i < count; i += 1) {
-    const file = join(dir, `s${String(i)}.jsonl`)
-    writeFileSync(file, '{"type":"user"}\n')
+    // Through the SDK's builder: 5.x names the file with a one-way hash of the id, and the record
+    // carries the id, which is where a listing now reads it from (usetheokit/theokit#654).
+    const id = `s${String(i)}`
+    const file = transcriptPath(root, cwd, id)
+    writeFileSync(file, `${JSON.stringify({ type: 'user', sessionId: id })}\n`)
     if (i < count - 1) utimesSync(file, old, old)
   }
   return { cwd, root, dir }
@@ -93,7 +97,7 @@ describe('runTranscriptGC over a real tree', () => {
     expect(seenSorted).toEqual(removedSorted)
     expect(readdirSync(dir).length).toBe(4 - result.removed.length)
     expect(
-      existsSync(join(dir, 's3.jsonl')),
+      existsSync(transcriptPath(root, cwd, 's3')),
       'the newest is what `--continue` would find and must survive',
     ).toBe(true)
   })

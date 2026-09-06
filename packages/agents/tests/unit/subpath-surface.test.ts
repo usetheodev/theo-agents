@@ -38,6 +38,23 @@ const SNAPSHOT = JSON.parse(
  * `subpath-coverage.test.ts` itself (M78's F-10 review), which lost `bench` from a copy while the
  * comment swore "same scope".
  */
+/**
+ * Source symbols the layer deliberately does not re-export, because only ONE of the supported
+ * majors has them.
+ *
+ * The range is `^4.52.1 || ^5.0.0`. A symbol that exists in 5.x and not in 4.x cannot be
+ * re-exported unconditionally: the DTS build against 4.52.1 fails on it (measured). This set is
+ * therefore a statement about the RANGE, not about the layer being incomplete — and each entry
+ * carries its reason in `subpath-coverage.test.ts`'s `gaps`, which is the register for it.
+ *
+ * Remove an entry when the floor moves past the major that lacks the symbol.
+ */
+const MAJOR_SCOPED_GAPS = new Set([
+  // `LiveTranscriptError` — the 5.x name for `LiveSessionError`, which 5.x keeps working and
+  // deprecated. The name that crosses is the one both majors have.
+  'persistence: LiveTranscriptError',
+])
+
 describe('M90 — the infra subpath surface is locked', () => {
   it('test_the_snapshot_covers_all_four_subpaths', () => {
     // `pty` left this package (#460): it carried `@theokit/sdk-pty`, whose native install step every
@@ -73,6 +90,10 @@ describe('M90 — the infra subpath surface is locked', () => {
     // — `createViewImageTool`, `DEFAULT_MAX_IMAGE_BYTES` and `CreateViewImageToolOptions` — which
     // `tools-view-image-parity.test.ts` had been skipping loudly while the dependency was short.
     // Raising the floor is what turned that skip back into an assertion.
+    // Still 178 after the SDK range widened to `^4.52.1 || ^5.0.0`. 5.x renamed this class to
+    // `LiveTranscriptError` and kept `LiveSessionError` working and deprecated; only the name BOTH
+    // majors have crosses, so the layer's surface is the same number under either. That is the
+    // property the widening had to preserve — see the gap recorded in `subpath-coverage.test.ts`.
     const total = Object.values(SNAPSHOT).reduce((n, s) => n + s.values.length + s.types.length, 0)
     expect(total).toBe(178)
   })
@@ -95,7 +116,8 @@ describe('M90 — the infra subpath surface is locked', () => {
       const sourceText = await enumerateSurface(spec)
       const inTheLayer = new Set([...layerDir.values, ...layerDir.types])
       for (const n of [...sourceText.values, ...sourceText.types]) {
-        if (!inTheLayer.has(n)) missing.push(`${sub}: ${n}`)
+        if (!inTheLayer.has(n) && !MAJOR_SCOPED_GAPS.has(`${sub}: ${n}`))
+          missing.push(`${sub}: ${n}`)
       }
     }
     expect(

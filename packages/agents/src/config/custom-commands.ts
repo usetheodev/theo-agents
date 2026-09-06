@@ -79,6 +79,15 @@ export interface LoadCustomCommandsInput {
    */
   readonly projectTrusted: boolean
   /** Names the product already uses, so a shadow can be reported rather than discovered later. */
+  /**
+   * Foreign dialects whose command directory the caller wants read, in the SDK's `compatSources`
+   * vocabulary. `['claude-code']` adds `<projectDir>/.claude/commands/`.
+   *
+   * Declaration AND trust, exactly as `resolveCompatSources` requires for the other surfaces: a
+   * command is a prompt that runs on the operator's behalf, and this directory is usually written
+   * for a different product and arrives with the repository.
+   */
+  readonly compatSources?: readonly string[]
   readonly builtinNames?: readonly string[]
   /** Where a shadow, a duplicate, or a malformed file is reported. */
   readonly onWarn?: (message: string) => void
@@ -92,6 +101,20 @@ export interface CustomCommandsResult {
 }
 
 const COMMANDS_DIR = join('.theokit', 'commands')
+
+/**
+ * The foreign dialect's command directory, read only when the caller DECLARES it.
+ *
+ * Three surfaces already reach `<cwd>/.claude/` when a consumer declares it — rules, skills and
+ * subagents, through the SDK's `compatSources`. Commands are loaded here instead, and were the one
+ * surface that never learned about it: the file sat on disk, the name never appeared, and nothing
+ * said why. A partial dialect is worse than none, because whoever watched the other three work has
+ * no reason to suspect the fourth.
+ */
+const COMPAT_COMMANDS_DIR = join('.claude', 'commands')
+
+/** The compat source that names the dialect above; the SDK's own vocabulary, not a second one. */
+const CLAUDE_CODE_SOURCE = 'claude-code'
 const IGNORE_WARNING = (): void => undefined
 
 /**
@@ -101,6 +124,65 @@ const IGNORE_WARNING = (): void => undefined
  * ships a `review` command means *its* review, and having the operator's generic one silently take
  * precedence would make the repository's own configuration the weaker statement.
  */
+/**
+ * The project directories to read, in precedence order — foreign first, native last.
+ *
+ * Last write wins the map, so a project's own `.theokit/commands/` keeps its name against a
+ * same-named command from another product's directory. The foreign root appears only when the
+ * caller DECLARED it; reading it unasked is the behaviour `usetheokit/theokit-sdk#524` removed
+ * from every other surface.
+ *
+ * Separate from the loop because the two callers below — the trusted path and the refusal that has
+ * to COUNT what it skipped — must agree on the answer, and because a list is easier to be right
+ * about than a branch repeated twice.
+ */
+function projectCommandDirs(input: LoadCustomCommandsInput): string[] {
+  if (input.projectDir === undefined) return []
+  const dirs: string[] = []
+  if (input.compatSources?.includes(CLAUDE_CODE_SOURCE) === true) {
+    dirs.push(join(input.projectDir, COMPAT_COMMANDS_DIR))
+  }
+  dirs.push(join(input.projectDir, COMMANDS_DIR))
+  return dirs
+}
+
+/**
+ * Fold the project's commands into `loaded`, or explain why none were.
+ *
+ * Its own function because the trusted and untrusted paths are two different jobs — merging, and
+ * COUNTING what was refused — and reading them inside the orchestrator put five levels of nesting
+ * between the reader and either one.
+ */
+function mergeProjectCommands(
+  input: LoadCustomCommandsInput,
+  loaded: Map<string, CustomCommand>,
+  warn: (message: string) => void,
+): void {
+  const dirs = projectCommandDirs(input)
+  if (dirs.length === 0) return
+
+  if (!input.projectTrusted) {
+    // The foreign root is counted too: a declared `.claude/commands/` skipped for want of trust
+    // must say so, or the operator reads the same silence this whole change removed.
+    const pending = dirs.flatMap((dir) => readCommandsDir(dir, 'project', IGNORE_WARNING))
+    if (pending.length > 0) {
+      warn(
+        `${String(pending.length)} project command(s) found but the directory is not trusted — ` +
+          `none were loaded. A command is a prompt that runs on your behalf.`,
+      )
+    }
+    return
+  }
+
+  for (const command of dirs.flatMap((dir) => readCommandsDir(dir, 'project', warn))) {
+    const shadowed = loaded.get(command.name)
+    if (shadowed?.source === 'user') {
+      warn(`project command "${command.name}" overrides the user-level one at ${shadowed.path}.`)
+    }
+    loaded.set(command.name, command)
+  }
+}
+
 export function loadCustomCommands(input: LoadCustomCommandsInput): CustomCommandsResult {
   const warn = input.onWarn ?? IGNORE_WARNING
   const loaded = new Map<string, CustomCommand>()
@@ -112,35 +194,7 @@ export function loadCustomCommands(input: LoadCustomCommandsInput): CustomComman
     }
   }
 
-  if (input.projectDir !== undefined) {
-    if (!input.projectTrusted) {
-      const pending = readCommandsDir(
-        join(input.projectDir, COMMANDS_DIR),
-        'project',
-        IGNORE_WARNING,
-      )
-      if (pending.length > 0) {
-        warn(
-          `${String(pending.length)} project command(s) found but the directory is not trusted — ` +
-            `none were loaded. A command is a prompt that runs on your behalf.`,
-        )
-      }
-    } else {
-      for (const command of readCommandsDir(
-        join(input.projectDir, COMMANDS_DIR),
-        'project',
-        warn,
-      )) {
-        const shadowed = loaded.get(command.name)
-        if (shadowed !== undefined) {
-          warn(
-            `project command "${command.name}" overrides the user-level one at ${shadowed.path}.`,
-          )
-        }
-        loaded.set(command.name, command)
-      }
-    }
-  }
+  mergeProjectCommands(input, loaded, warn)
 
   const builtins = new Set(input.builtinNames ?? [])
   const shadowedBuiltins = [...loaded.keys()].filter((name) => builtins.has(name))

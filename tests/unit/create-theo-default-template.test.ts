@@ -97,11 +97,21 @@ describe('create-theokit default template — package.json.tmpl SDK dep (EC-7)',
       expect(m, `not a caret pin: ${pin}`).toBeTruthy()
       return [Number(m![1]), Number(m![2]), Number(m![3])]
     }
+    // The peer may name several majors (`^4.52.1 || ^5.0.0`). The floor it declares is the LOWEST
+    // clause: a lockfile at that floor is the one most likely not to satisfy the peer, so that is
+    // the clause the template must not sit below. Same property, wider range form.
+    const lowestClause = frameworkPeer
+      .split('||')
+      .map((c) => c.trim())
+      .sort((a, b) => {
+        const [x, y] = [asTuple(a), asTuple(b)]
+        return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]
+      })[0]
     const [tMaj, tMin, tPat] = asTuple(templatePin!)
-    const [pMaj, pMin, pPat] = asTuple(frameworkPeer)
+    const [pMaj, pMin, pPat] = asTuple(lowestClause)
     expect(
       tMaj === pMaj && (tMin > pMin || (tMin === pMin && tPat >= pPat)),
-      `the template pins "${templatePin}", below the peer the framework declares ("${frameworkPeer}") — ` +
+      `the template pins "${templatePin}", below the floor the framework declares ("${lowestClause}" of "${frameworkPeer}") — ` +
         `a lockfile at the template's floor does not satisfy the peer`,
     ).toBe(true)
   })
