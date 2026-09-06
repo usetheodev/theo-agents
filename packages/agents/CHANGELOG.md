@@ -1,5 +1,60 @@
 # @theokit/agents
 
+## 13.0.0-next.1
+
+### Minor Changes
+
+- e7a4d65: **A declared `.claude/` now reaches commands too** (theocode B-152).
+
+  `loadCustomCommands` takes `compatSources`, in the SDK's own vocabulary: `['claude-code']` adds
+  `<projectDir>/.claude/commands/` to what it reads.
+
+  Three surfaces already reached that directory when a consumer declared it — hooks, skills and
+  subagents, through the SDK's `compatSources`. Commands are loaded by this package instead, and were
+  the one surface that never learned about it. Measured against a real TUI: the same command file was
+  invocable under `.theokit/commands/` and silent under `.claude/commands/`, with no diagnostic
+  anywhere. A partial dialect is worse than none — whoever watched the other three work has no reason
+  to suspect the fourth.
+
+  **The trust gate does not move.** The foreign directory is read only when the caller declared it
+  AND the project is trusted, which is the same pair `resolveCompatSources` already requires. A
+  command is a prompt that runs on the operator's behalf, and this one usually arrives with the
+  repository, written for another product. An untrusted project now COUNTS the foreign commands it
+  refused, so the refusal is not silent either.
+
+  **The native root wins a name collision**, and the two frontmatter vocabularies stay separate: this
+  loader reads `description:` and nothing else, so the other product's `model` and `argument-hint`
+  are carried in the body rather than adopted.
+
+- cfe7f4c: **`@theokit/sdk@5.x` is now supported, alongside 4.x**
+  ([#654](https://github.com/usetheokit/theokit/issues/654)).
+
+  The declared range becomes `^4.52.1 || ^5.0.0` (`^4.49.0 || ^5.0.0` for `@theokit/presenter`), and
+  the full suite passes on both halves: 7533 tests against `4.52.1` and 7533 against `5.0.1`.
+
+  This unblocks plugins whose open-ended `@theokit/sdk` peer resolves to 5.x. Until now `theokit` was
+  the package that **refused** that resolution — the ERESOLVE named the plugin, but the bound that
+  could not be satisfied was this one.
+
+  **What had to change, and why it was not a version bump.** SDK 5.x writes a transcript to
+  `${sessionUuidFor(sessionId)}.jsonl` where 4.x wrote `${safeSessionId(sessionId)}.jsonl` — a
+  SHA-256 over a namespace, so the filename stopped being the session id and the mapping does not
+  invert. `listSessions` derived ids from filenames, so listing, protection, GC and deletion all
+  returned UUIDs where callers passed ids. One defect, twenty-nine failing tests.
+
+  The id is now read from the transcript **record**, which the SDK writes on both majors and which is
+  authoritative where the name was only a convention. The filename stem remains the fallback, so a
+  truncated transcript still appears in a listing rather than dropping out of GC's sight.
+
+  `LiveTranscriptError` — 5.x's new name for `LiveSessionError` — deliberately does not cross the
+  `@theokit/agents` layer: it does not exist on the 4.x half, and 5.x keeps the old name working and
+  deprecated, so the name that crosses is the one both majors have.
+
+### Patch Changes
+
+- Updated dependencies [cfe7f4c]
+  - @theokit/presenter@0.9.0-next.0
+
 ## 13.0.0-next.0
 
 ### Minor Changes
