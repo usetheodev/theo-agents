@@ -3,7 +3,7 @@
  * a session id or an `encodeProjectDir` hash — never from HTTP input. The variable filename IS the
  * feature: a module whose job is listing and deleting sessions cannot address them by literal.
  */
-import { readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { closeSync, openSync, readFileSync, readdirSync, readSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { TheokitAgentError } from '@theokit/sdk/errors'
@@ -135,10 +135,57 @@ export function listSessions(cwd: string, root: string = transcriptRoot()): Sess
       isDirectory,
     )
     if (kind !== 'transcript') continue
-    found.push({ id: entry.replace(/\.jsonl$/, ''), transcript: path, modifiedAt })
+    found.push({ id: sessionIdOf(path, entry), transcript: path, modifiedAt })
   }
   return found.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime())
 }
+
+/**
+ * The session id of a transcript — read from the RECORD, not from the filename.
+ *
+ * `@theokit/sdk@5.x` writes `${sessionUuidFor(sessionId)}.jsonl`, a SHA-256 over a namespace, where
+ * 4.x wrote `${safeSessionId(sessionId)}.jsonl`. So the comment this function replaced — "the id is
+ * in the name" — stopped being true, and every caller that keys on the id (listing, protection, GC,
+ * deletion) got a UUID where it expected the id it had passed in (usetheokit/theokit#654).
+ *
+ * The SDK exports no reverse mapping and `sessionUuidFor` appears in no `.d.ts`, so the name cannot
+ * be undone. It does not need to be: the SDK writes `sessionId` into every record, on both majors,
+ * which makes the content authoritative where the name was only a convention.
+ *
+ * Only the first record is read, and only a bounded prefix of it. A listing must stay cheap enough
+ * that GC can call it, and the id does not change down the file.
+ *
+ * The filename stem is the fallback, not an error: a transcript truncated mid-write still has to
+ * appear in the listing, because a session GC cannot see is a session GC never collects.
+ */
+function sessionIdOf(path: string, entry: string): string {
+  const stem = entry.replace(/\.jsonl$/, '')
+  let fd: number | undefined
+  try {
+    fd = openSync(path, 'r')
+    const buffer = Buffer.alloc(FIRST_RECORD_BYTES)
+    const read = readSync(fd, buffer, 0, FIRST_RECORD_BYTES, 0)
+    const newline = buffer.indexOf(0x0a)
+    const end = newline === -1 || newline > read ? read : newline
+    const first: unknown = JSON.parse(buffer.toString('utf8', 0, end))
+    if (typeof first === 'object' && first !== null) {
+      const id = (first as { sessionId?: unknown }).sessionId
+      if (typeof id === 'string' && id.length > 0) return id
+    }
+  } catch {
+    // Unreadable, truncated, or written before the SDK carried the field.
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+  return stem
+}
+
+/**
+ * Enough for the first JSONL record's envelope. The SDK's records carry the message body too, so a
+ * long first turn can exceed this — in which case the JSON does not parse and the stem is used,
+ * which is the same outcome as before this function existed.
+ */
+const FIRST_RECORD_BYTES = 64 * 1024
 
 /**
  * Transcripts that must NOT be collected: the resumable pointer's target, the most recent session,

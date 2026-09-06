@@ -111,6 +111,47 @@ function bucketsOf(body) {
   return buckets
 }
 
+/**
+ * Decide what the dated section should be — the whole policy, in one pure function so it can be
+ * tested without a git fixture.
+ *
+ * Two rules, and they answer different questions:
+ *
+ *   - A version was cut  -> there MUST be a heading naming it. `check-changelog-current.mjs`
+ *     matches on the heading and never on the body, and a release the record does not name is a
+ *     release that gate fails on — days later, attached to an unrelated pull request (#656).
+ *   - Prose is MOVED, never synthesised. A release with no consumer-visible change is a real
+ *     thing; a generated line describing it would put words in the record that nobody chose.
+ *
+ * So an empty `[Unreleased]` yields a heading and a pointer to where the detail actually lives,
+ * not an invented `### Added`.
+ *
+ * @returns {{heading: string, body: string} | null} null when there is nothing to name.
+ */
+export function composeRecord({ unreleasedBody, cut, date }) {
+  if (cut.length === 0) return null
+
+  const heading = `## [${cut.join(', ')}] - ${date}`
+  const buckets = bucketsOf(unreleasedBody)
+
+  if (buckets.size === 0) {
+    return {
+      heading,
+      body: "Released with no entry under `[Unreleased]`. Per-package detail is in each package's\nown `CHANGELOG.md`.",
+    }
+  }
+
+  const known = CATEGORY_ORDER.filter((c) => buckets.has(c))
+  const extra = [...buckets.keys()].filter((c) => !CATEGORY_ORDER.includes(c))
+
+  return {
+    heading,
+    body: [...known, ...extra]
+      .map((name) => `### ${name}\n\n${buckets.get(name).join('\n\n')}`)
+      .join('\n\n'),
+  }
+}
+
 function main() {
   const check = process.argv.includes('--check')
   const source = readFileSync(CHANGELOG, 'utf8')
@@ -125,13 +166,14 @@ function main() {
   const end = next === -1 ? source.length : next + 1
   const body = source.slice(afterHeading, end)
 
-  if (body.trim() === '') {
-    console.log('✓ [changelog] `[Unreleased]` is empty — nothing to record.')
-    return
-  }
-
   const cut = versionsJustCut()
-  if (cut.length === 0) {
+  const record = composeRecord({
+    unreleasedBody: body,
+    cut,
+    date: new Date().toISOString().slice(0, 10),
+  })
+
+  if (record === null) {
     // Not an error: this runs inside `version-packages`, and a run where changesets bumped nothing
     // is a run with nothing to name. Recording under a heading naming no version would produce a
     // section the release-record gate can never match.
@@ -139,16 +181,7 @@ function main() {
     return
   }
 
-  const buckets = bucketsOf(body)
-  const known = CATEGORY_ORDER.filter((c) => buckets.has(c))
-  const extra = [...buckets.keys()].filter((c) => !CATEGORY_ORDER.includes(c))
-
-  const date = new Date().toISOString().slice(0, 10)
-  const heading = `## [${cut.join(', ')}] - ${date}`
-
-  const sections = [...known, ...extra]
-    .map((name) => `### ${name}\n\n${buckets.get(name).join('\n\n')}`)
-    .join('\n\n')
+  const { heading, body: sections } = record
 
   if (check) {
     console.error(
@@ -159,9 +192,16 @@ function main() {
   }
 
   const rewritten =
-    source.slice(0, start) + `## [Unreleased]\n\n${heading}\n\n${sections}\n` + source.slice(end)
+    source.slice(0, start) +
+    // One trailing blank line, whichever branch produced the body: the bucket path ends with a
+    // newline of its own and the pointer path does not, and `source.slice(end)` starts at `## `.
+    `## [Unreleased]\n\n${heading}\n\n${trimNewlines(sections)}\n\n` +
+    source.slice(end)
   writeFileSync(CHANGELOG, rewritten)
   console.log(`✓ [changelog] recorded ${heading}`)
 }
 
-main()
+// Only when run as a script — importing this module must not rewrite the CHANGELOG.
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main()
+}

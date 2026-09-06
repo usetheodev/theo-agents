@@ -39,7 +39,15 @@ describe('satisfiesSdkRange (M48 T2.2)', () => {
     expect(satisfiesSdkRange('4.0.2-next.1', '^4.0.2-next.0')).toBe(true)
   })
 
-  it('test_supported_range_is_the_v4_floor', () => {
-    expect(SUPPORTED_SDK_RANGE).toBe('^4.0.1')
+  it('test_supported_range_spans_both_supported_majors', () => {
+    // `@theokit/sdk@5.x` renamed transcript files to a one-way hash of the session id
+    // (usetheokit/theokit#654); this package reads the id from the record instead, which is the
+    // same answer under either scheme — so both majors are genuinely supported, and the range says
+    // so in the form `satisfiesSdkRange` understands. Alternation, not `>=x <y`: this checker is
+    // caret-only by ADR D1 and is what the boot-time fail-fast uses.
+    expect(SUPPORTED_SDK_RANGE).toBe('^4.0.1 || ^5.0.0')
+    expect(satisfiesSdkRange('4.52.1', SUPPORTED_SDK_RANGE)).toBe(true)
+    expect(satisfiesSdkRange('5.0.1', SUPPORTED_SDK_RANGE)).toBe(true)
+    expect(satisfiesSdkRange('6.0.0', SUPPORTED_SDK_RANGE)).toBe(false)
   })
 })

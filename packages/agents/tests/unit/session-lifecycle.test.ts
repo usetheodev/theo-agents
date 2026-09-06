@@ -51,10 +51,14 @@ let unwritableRoot: string
  * write order and the guard correctly refused to delete what the fixture had accidentally made the
  * newest file.)
  */
-function writeTranscriptFile(sessionId: string, ageSeconds = 0, contents = ''): string {
+function writeTranscriptFile(sessionId: string, ageSeconds = 0, contents?: string): string {
   const path = transcriptPath(root, CWD, sessionId)
   mkdirSync(projectDirFor(CWD, root), { recursive: true })
-  writeFileSync(path, contents, 'utf8')
+  // The record carries `sessionId`, because a real transcript does and because SDK 5.x names the
+  // FILE with a one-way hash of that id — so the content is the only place the id survives
+  // (usetheokit/theokit#654). An empty fixture encoded the old "filename is the id" assumption
+  // without saying so, and passed only while that assumption held.
+  writeFileSync(path, contents ?? `${JSON.stringify({ type: 'user', sessionId })}\n`, 'utf8')
   const when = new Date(FIXED_NOW - ageSeconds * 1000)
   utimesSync(path, when, when)
   return path

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **agents:** a declared `.claude/` root now reaches custom commands, not only hooks, skills and
+  subagents. Same trust gate; the project's own `.theokit/commands/` still wins a name collision.
+- **sdk:** `@theokit/sdk@5.x` is supported alongside 4.x. Plugins whose peer resolves to 5.0.x now
+  install against `theokit` instead of failing with ERESOLVE (#654).
+
+### Fixed
+
+- **release:** the root changelog now records every version a release cuts, including one whose
+  entries a previous cut had already moved. Before, such a release left the record silent and the
+  release-record gate failed hours later on an unrelated pull request (#656).
+- **release:** the publish guard no longer calls a published package unpublished. It now reads what
+  `changeset publish` reported, so a slow npm registration is reported as pending while a genuinely
+  failed publish still fails the release, naming which of the two happened (#652).
+
 ## [create-theokit 2.0.0-next.1] - 2026-09-04
 
 ### Changed

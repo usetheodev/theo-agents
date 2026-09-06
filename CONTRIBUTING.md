@@ -45,6 +45,27 @@ pnpm knip
 There is no browser suite: the project ships no end-to-end harness, so a
 change to rendering or hydration needs a reviewer to exercise it by hand.
 
+### Which `@theokit/sdk` are you actually reading?
+
+`theokit` supports two SDK majors (`^4.52.1 || ^5.0.0`), and a pnpm store routinely holds both at
+once — one because the lockfile resolves it, another left by a `pnpm.overrides` entry someone used
+to test the other half of the range. The symlink decides which one your editor, your grep and your
+tests see, and it changes under you without saying so.
+
+Before concluding anything from a search under `node_modules`, name the object:
+
+```bash
+L=$(readlink -f node_modules/@theokit/sdk) \
+  && node -e "console.log(require('$L/package.json').version)"
+```
+
+This is not hypothetical. A 5.x-only type was searched for, found zero times, and reported as
+"absent from the installed 5.0.1" — while the link pointed at 4.52.1. The grep was correct; it
+answered about a different package than the one the sentence named.
+
+"Verify against the artifact, not the indicator" presumes there is ONE artifact. Two trees, one
+name, on one machine is the case where that rule fails silently.
+
 ## How to add a feature
 
 1. Open an issue (or comment on an existing one). Confirm scope before
