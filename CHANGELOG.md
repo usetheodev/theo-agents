@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [@theokit/agents 13.0.0-next.1, @theokit/presenter 0.9.0-next.0, @theokit/tauri 1.0.0-next.1, theokit 0.65.0-next.2] - 2026-09-06
+
 ### Added
 
 - **agents:** a declared `.claude/` root now reaches custom commands, not only hooks, skills and

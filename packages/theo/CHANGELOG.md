@@ -1,5 +1,77 @@
 # theo
 
+## 0.65.0-next.2
+
+### Minor Changes
+
+- cfe7f4c: **`@theokit/sdk@5.x` is now supported, alongside 4.x**
+  ([#654](https://github.com/usetheokit/theokit/issues/654)).
+
+  The declared range becomes `^4.52.1 || ^5.0.0` (`^4.49.0 || ^5.0.0` for `@theokit/presenter`), and
+  the full suite passes on both halves: 7533 tests against `4.52.1` and 7533 against `5.0.1`.
+
+  This unblocks plugins whose open-ended `@theokit/sdk` peer resolves to 5.x. Until now `theokit` was
+  the package that **refused** that resolution — the ERESOLVE named the plugin, but the bound that
+  could not be satisfied was this one.
+
+  **What had to change, and why it was not a version bump.** SDK 5.x writes a transcript to
+  `${sessionUuidFor(sessionId)}.jsonl` where 4.x wrote `${safeSessionId(sessionId)}.jsonl` — a
+  SHA-256 over a namespace, so the filename stopped being the session id and the mapping does not
+  invert. `listSessions` derived ids from filenames, so listing, protection, GC and deletion all
+  returned UUIDs where callers passed ids. One defect, twenty-nine failing tests.
+
+  The id is now read from the transcript **record**, which the SDK writes on both majors and which is
+  authoritative where the name was only a convention. The filename stem remains the fallback, so a
+  truncated transcript still appears in a listing rather than dropping out of GC's sight.
+
+  `LiveTranscriptError` — 5.x's new name for `LiveSessionError` — deliberately does not cross the
+  `@theokit/agents` layer: it does not exist on the 4.x half, and 5.x keeps the old name working and
+  deprecated, so the name that crosses is the one both majors have.
+
+### Patch Changes
+
+- 5e3e770: **The release guard no longer reports a published package as unpublished**
+  ([#652](https://github.com/usetheokit/theokit/issues/652)).
+
+  npm registers a version minutes after `publish` returns — measured 5m04s for
+  `@theokit/sdk-cache@1.0.2` on 2026-09-04. `verify-release-published.mjs` read the registry with a
+  30s budget, so on any release with several packages it exhausted the budget and printed
+  `✗ <pkg>@<version> was NOT published` for packages that had published fine.
+
+  Raising the budget is the wrong knob: one large enough to be correct makes the gate mostly sleep,
+  and a six-minute gate is one people cancel.
+
+  **The two failures are distinguishable on the write path, not the read path.** `#366` — the
+  credential gone — is `E404 … PUT`, reported by the publish itself, immediately. Registration lag is
+  a successful PUT whose GET has not caught up. So `pnpm release` now records what `changeset publish`
+  said, and the guard reads it: a package the publish errored on fails the release naming that cause;
+  a package the publish wrote and the registry has not shown yet is reported as pending, not as a
+  failure; a package the publish never attempted is still the `#366` empty green and still fails.
+
+  Absence of a log never becomes success — it is reported as unconfirmed.
+
+- a2d5cd3: **The root release record now names every version that was cut, including releases nobody wrote
+  prose for** ([#656](https://github.com/usetheokit/theokit/issues/656)).
+
+  `record-root-changelog.mjs` returned early whenever `## [Unreleased]` was empty, so a second
+  `changeset version` run — one whose prose the previous cut had already drained — bumped packages
+  and left the root record silent about them. `check-changelog-current.mjs` then failed, hours later,
+  attached to whichever unrelated pull request happened to run CI next.
+
+  The two scripts disagreed about what silence means: one treated an empty `[Unreleased]` as nothing
+  to do, the other treats an unnamed release as a defect. The heading settles it — the gate matches
+  on the heading naming the version and never on the body.
+
+  **The rule that prose is moved and never invented is unchanged.** A heading is a fact about what
+  was cut and when; a change description is a claim about what changed, and stays the human's to
+  write. A release with no entry gets its heading plus a pointer to the per-package changelogs, not a
+  generated `### Added`.
+
+- Updated dependencies [e7a4d65]
+- Updated dependencies [cfe7f4c]
+  - @theokit/agents@13.0.0-next.1
+  - @theokit/presenter@0.9.0-next.0
+
 ## 0.65.0-next.1
 
 ### Minor Changes
@@ -17,7 +89,6 @@
 
   ```ts
   import { escapeHtml, escapeHtmlAttribute } from 'theokit/server/security'
-
   ;`<title>${escapeHtml(title)}</title>` // text content
   `<a href='${escapeHtmlAttribute(url)}'>` // quoted attribute — escapes ' and ` too
   ```

@@ -12,14 +12,19 @@
   },
   "changesets": [
     "agents-move-inside-the-server",
+    "commands-reach-a-declared-foreign-root",
     "compat-sources-reach-the-sdk",
     "escape-html-is-exported-with-its-caveat",
     "plugin-hooks-reach-every-route-kind",
     "rate-limited-guard-and-refusals-that-carry-headers",
     "session-secret-guard-refuses-what-people-type",
     "studio-is-no-longer-a-declared-peer",
+    "tauri-is-released-because-its-peer-moved",
     "template-pin-admits-the-published-stable",
     "the-five-concepts-in-every-generated-app",
+    "the-publish-guard-reads-the-write-path",
+    "the-root-record-names-every-cut-version",
+    "the-sdk-range-admits-v5",
     "theo-md-location-decided"
   ]
 }
