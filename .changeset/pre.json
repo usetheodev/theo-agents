@@ -12,6 +12,7 @@
   },
   "changesets": [
     "agents-move-inside-the-server",
+    "an-unreadable-transcript-is-never-identified",
     "commands-reach-a-declared-foreign-root",
     "compat-sources-reach-the-sdk",
     "escape-html-is-exported-with-its-caveat",
