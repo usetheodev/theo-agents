@@ -36,6 +36,10 @@ async function* scriptedRun(): AsyncGenerator {
 
 vi.mock('@theokit/agents', () => ({
   compileAgentModule: () => ({ tools: [], agents: {}, model: MODEL }),
+  // theokit#663 — the HTTP/CLI entry points call the disk-boundary name. A double that offers only
+  // `compileAgentModule` stops intercepting the moment the SUT stops calling it, and a double that
+  // intercepts nothing exercises the real code in silence.
+  compileLoadedAgentModule: () => ({ tools: [], agents: {}, model: MODEL }),
   resolveEnabledSkills: () => undefined,
   streamAgentUIMessages: () => scriptedRun(),
 }))

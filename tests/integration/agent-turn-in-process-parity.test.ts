@@ -74,7 +74,11 @@ async function drainHttpStyle(sse: string): Promise<string[]> {
 
 async function drainInProcess(): Promise<string[]> {
   const log: string[] = []
-  const PLAIN = { __compiled: { tools: [], stream: true } }
+  // The compiler is mocked in this file; `__compiled` is a test-double protocol, not an agent
+  // module, so it does not satisfy `AgentModule` (usetheokit/theokit#663).
+  const PLAIN = { __compiled: { tools: [], stream: true } } as unknown as Parameters<
+    typeof streamAgentTurnInProcess
+  >[0]
   for await (const chunk of streamAgentTurnInProcess(PLAIN, 'sk', {
     message: 'go',
     sessionId: 's',

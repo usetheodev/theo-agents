@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto'
 
-import { streamAgentTurnInProcess, type InProcessAwaitApproval } from 'theokit/server/agent'
+import {
+  streamAgentTurnInProcess,
+  type AgentModule,
+  type InProcessAwaitApproval,
+} from 'theokit/server/agent'
 
 /** Writes one JSONL line (the sidecar's stdout `write`). */
 export type WriteLine = (line: string) => void
@@ -21,7 +25,11 @@ export type SidecarAwaitApproval = InProcessAwaitApproval
  * caller resolves `awaitApproval` (typically after the Rust shell forwards the webview's decision on stdin).
  */
 export async function runTurnToJsonl(
-  mod: unknown,
+  // A desktop sidecar IMPORTS its agent module statically (`import mod from './agents/chat.js'`),
+  // so the shape is knowable here — unlike the HTTP/CLI entry points, which receive a module from a
+  // path discovered at runtime and use `compileLoadedAgentModule`. Typing it is what turns an
+  // unawaited async producer into a build failure rather than a dead first turn (theokit#663).
+  mod: AgentModule,
   apiKey: string,
   message: string,
   write: WriteLine,

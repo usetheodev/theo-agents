@@ -5,7 +5,7 @@
  * module to its tools + streaming capability, builds the card, and returns it as a Web-Standard
  * JSON `Response` (G8). The dev middleware + prod handler branch to this before the agent POST route.
  */
-import { type AgentManifestEntry, buildAgentCard, compileAgentModule } from '@theokit/agents'
+import { type AgentManifestEntry, buildAgentCard, compileLoadedAgentModule } from '@theokit/agents'
 
 const WELL_KNOWN = /^\/\.well-known\/([^/]+)\/agent-card\.json$/
 
@@ -17,7 +17,7 @@ export function isAgentCardPath(urlPath: string): string | null {
 
 /** Build a minimal manifest entry (the subset `buildAgentCard` reads) from a compiled agent. */
 function toManifestEntry(name: string, route: string, mod: unknown): AgentManifestEntry {
-  const compiled = compileAgentModule(mod, `agent card for "${name}"`)
+  const compiled = compileLoadedAgentModule(mod, `agent card for "${name}"`)
   return {
     name,
     route,

@@ -7,7 +7,7 @@
  * (method not found). Web Standards Response (G8). The stdio transport + full method set stay
  * SDK-side (sdk-runtime.md); this exposes the agent over the app's own HTTP route.
  */
-import { type CompiledTool, compileAgentModule } from '@theokit/agents'
+import { type CompiledTool, compileLoadedAgentModule } from '@theokit/agents'
 
 import { type AppResource, buildResourceDescriptors, readAppResource } from './mcp-app-resources.js'
 
@@ -174,7 +174,7 @@ export async function handleMcpJsonRpc(
   }
   const { id, method, params } = body
   try {
-    const compiled = compileAgentModule(mod, `mcp server for "${name}"`)
+    const compiled = compileLoadedAgentModule(mod, `mcp server for "${name}"`)
     if (method === 'initialize') {
       const capabilities: Record<string, unknown> = { tools: {} }
       if (appResources.length > 0) capabilities.resources = {}

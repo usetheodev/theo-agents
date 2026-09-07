@@ -19,7 +19,7 @@ import { TheokitAgentError } from '@theokit/sdk/errors'
 import { type CompiledAgentOptions } from './agent-compiler.js'
 import type { StreamEvent } from './agent-sse-handler.js'
 import type { AgentStreamEvent } from './agent-stream-events.js'
-import { compileAgentDefinition, isAgentDefinition } from './define-agent.js'
+import { type AgentDefinition, compileAgentDefinition, isAgentDefinition } from './define-agent.js'
 import { createHitlPlugin, type HitlWiring } from './hitl-plugin.js'
 import { presentUIMessageStream, type MaskError } from './present-ui-message-stream.js'
 import { createSdkAgentStream, type RuntimeOverrides } from './sdk-adapter.js'
@@ -50,6 +50,35 @@ export class AgentDefinitionError extends TheokitAgentError {
 }
 
 /** Unwrap a module namespace `{ default: X }` to `X`; pass a bare value through. */
+/**
+ * What {@link compileAgentModule} accepts: an agent definition, a capability-built options object,
+ * or the module object that default-exports either of those.
+ *
+ * The compiled arm mirrors `isCompiledAgentOptions` — `tools` plus `agents` — rather than the fuller
+ * `CompiledAgentOptions`, whose required `stream` the runtime guard never asks for. A parameter type
+ * STRICTER than the guard would refuse shapes that work today, which is a different defect from the
+ * one being fixed (usetheokit/theokit#663).
+ *
+ * The parameter was `unknown` until #663. The runtime was never wrong — it refused a bad shape and
+ * threw `AgentDefinitionError` — but `unknown` moved the refusal to the first turn, and a consumer
+ * shipped two releases in which no turn could run, with every static check green.
+ */
+export type AgentModule =
+  | AgentDefinition
+  | AcceptedCompiledOptions
+  | { readonly default: AgentDefinition | AcceptedCompiledOptions }
+
+/**
+ * `CompiledAgentOptions` as `isCompiledAgentOptions` actually accepts it: an array under `tools` and
+ * an object under `agents`. The guard inspects neither element type nor `stream`, so neither is
+ * demanded here — a parameter that demanded them would reject modules the runtime compiles today,
+ * which is a new defect rather than a fix for #663.
+ */
+type AcceptedCompiledOptions = Omit<Partial<CompiledAgentOptions>, 'tools' | 'agents'> & {
+  readonly tools: readonly unknown[]
+  readonly agents: Readonly<Record<string, unknown>>
+}
+
 function extractDefaultExport(mod: unknown): unknown {
   if (typeof mod === 'object' && mod !== null && 'default' in mod) {
     return mod.default
@@ -74,7 +103,10 @@ function isCompiledAgentOptions(value: unknown): value is CompiledAgentOptions {
   return Array.isArray(v.tools) && typeof v.agents === 'object' && v.agents !== null
 }
 
-export function compileAgentModule(mod: unknown, source = 'agent module'): CompiledAgentOptions {
+export function compileAgentModule(
+  mod: AgentModule,
+  source = 'agent module',
+): CompiledAgentOptions {
   const def = extractDefaultExport(mod)
   if (isAgentDefinition(def)) {
     return compileAgentDefinition(def)
@@ -83,6 +115,23 @@ export function compileAgentModule(mod: unknown, source = 'agent module'): Compi
   // either a `defineAgent(...)` definition or a capability-built `CompiledAgentOptions`.
   if (isCompiledAgentOptions(def)) return def
   throw new AgentDefinitionError(source)
+}
+
+/**
+ * Compile a module whose shape the typechecker CANNOT know — one that arrived from a dynamic
+ * `import()` of a path discovered at runtime, which is what every HTTP / CLI / MCP entry point in
+ * this framework receives.
+ *
+ * Identical to {@link compileAgentModule} at runtime. The separate name exists so `unknown` cannot
+ * quietly re-enter the typed entry points: a genuine disk boundary says so by calling this, and
+ * anything else has to satisfy {@link AgentModule}. Before #663 both cases shared one `unknown`
+ * parameter, so the boundary that had a reason was indistinguishable from the one that did not.
+ */
+export function compileLoadedAgentModule(
+  mod: unknown,
+  source = 'agent module',
+): CompiledAgentOptions {
+  return compileAgentModule(mod as AgentModule, source)
 }
 
 /**

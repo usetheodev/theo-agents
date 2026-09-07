@@ -125,8 +125,10 @@ export {
 export { AgentBuilder, ContextualTool } from './agent-builder.js'
 export {
   compileAgentModule,
+  compileLoadedAgentModule,
   streamAgentUIMessages,
   AgentDefinitionError,
+  type AgentModule,
 } from './agent-endpoint.js'
 
 export {

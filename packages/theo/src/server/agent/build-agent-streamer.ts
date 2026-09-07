@@ -6,7 +6,7 @@
  */
 
 import {
-  compileAgentModule,
+  compileLoadedAgentModule,
   type HumanInTheLoopOptions,
   resolveEnabledSkills,
   streamAgentUIMessages,
@@ -17,7 +17,7 @@ import type { ApiKeyResolver } from './api-key-resolver.js'
 import { getApprovalRegistry } from './approval-registry.js'
 import { observeServedRun } from './observe-served-run.js'
 
-type Compiled = ReturnType<typeof compileAgentModule>
+type Compiled = ReturnType<typeof compileLoadedAgentModule>
 
 /**
  * Build the HITL wiring for a compiled agent: gated tools register a pending
@@ -78,7 +78,7 @@ export function makeThreadStartRun(
 ): (sessionId: string, message: string) => AsyncIterable<UIMessageChunk> {
   return (sessionId, message) =>
     (async function* () {
-      const compiled = compileAgentModule(mod, source)
+      const compiled = compileLoadedAgentModule(mod, source)
       if (compiled.skillsResolver) {
         const enabled = await resolveEnabledSkills(
           compiled.skillsResolver,
