@@ -29,17 +29,60 @@ const plan = {
 }
 
 describe('formatGcPlan', () => {
+  it('test_a_collection_with_no_readable_session_id_is_reported_by_path', () => {
+    // usetheokit/theokit#668. These carry no id — the transcript could not be read — so they are
+    // counted and printed separately, by path. Printing a filename in the id column would put back
+    // the fabricated identity the fix removed, and folding them into `removed` would claim a number
+    // of SESSIONS were collected while naming fewer of them.
+    const lines = formatGcPlan(plan, {
+      dryRun: false,
+      removed: ['old-1'],
+      orphaned: ['/root/projects/-p/49f38704-9d1c-4a2b-8e77-0c1b2d3e4f50.jsonl'],
+      errors: [],
+    }).join('\n')
+
+    expect(lines).toMatch(/Removed 1 with no readable session id/)
+    expect(lines).toContain('49f38704-9d1c-4a2b-8e77-0c1b2d3e4f50.jsonl')
+    // The two counts stay separate: one session was named, one file was not.
+    expect(lines).toMatch(/Removed 1:/)
+  })
+
+  it('test_nothing_to_collect_only_when_both_lists_are_empty', () => {
+    // The guard used to read `removed.length === 0`, which would have said "Nothing to collect"
+    // while a file was being deleted.
+    const withOrphan = formatGcPlan(plan, {
+      dryRun: true,
+      removed: [],
+      orphaned: ['/root/projects/-p/unreadable.jsonl'],
+      errors: [],
+    }).join('\n')
+    expect(withOrphan).not.toMatch(/Nothing to collect/)
+
+    const empty = formatGcPlan(plan, {
+      dryRun: true,
+      removed: [],
+      orphaned: [],
+      errors: [],
+    }).join('\n')
+    expect(empty).toMatch(/Nothing to collect/)
+  })
+
   it('test_a_dry_run_says_nothing_was_deleted', () => {
     // The single most important line: an operator skimming the output must not mistake a preview
     // for an execution.
-    const lines = formatGcPlan(plan, { dryRun: true, removed: ['old-1'], errors: [] })
+    const lines = formatGcPlan(plan, { dryRun: true, removed: ['old-1'], orphaned: [], errors: [] })
     expect(lines.join('\n')).toMatch(/dry run/i)
     expect(lines.join('\n')).toMatch(/nothing was deleted/i)
     expect(lines.join('\n')).toMatch(/would remove/i)
   })
 
   it('test_an_applied_run_does_NOT_claim_to_be_a_dry_run', () => {
-    const lines = formatGcPlan(plan, { dryRun: false, removed: ['old-1'], errors: [] })
+    const lines = formatGcPlan(plan, {
+      dryRun: false,
+      removed: ['old-1'],
+      orphaned: [],
+      errors: [],
+    })
     expect(lines.join('\n')).not.toMatch(/dry run/i)
     expect(lines.join('\n')).toMatch(/applied/i)
   })
@@ -47,7 +90,9 @@ describe('formatGcPlan', () => {
   it('test_every_kept_session_is_printed_WITH_its_reason', () => {
     // "Skipped 4 sessions" tells an operator nothing. "kept because it holds an active writer
     // lease" tells them whether to go stop something.
-    const text = formatGcPlan(plan, { dryRun: true, removed: [], errors: [] }).join('\n')
+    const text = formatGcPlan(plan, { dryRun: true, removed: [], orphaned: [], errors: [] }).join(
+      '\n',
+    )
     expect(text).toContain('live — active writer lease')
     expect(text).toContain('recent — within the newest 10')
   })
@@ -57,6 +102,7 @@ describe('formatGcPlan', () => {
     const text = formatGcPlan(plan, {
       dryRun: false,
       removed: ['old-2'],
+      orphaned: [],
       errors: [{ id: 'old-1', message: 'EACCES' }],
     }).join('\n')
     expect(text).toMatch(/old-1/)
@@ -68,7 +114,7 @@ describe('formatGcPlan', () => {
     // Silence reads as failure. "Nothing to collect" is the answer.
     const text = formatGcPlan(
       { ...plan, candidates: [], kept: [] },
-      { dryRun: true, removed: [], errors: [] },
+      { dryRun: true, removed: [], orphaned: [], errors: [] },
     ).join('\n')
     expect(text).toMatch(/nothing to collect/i)
   })

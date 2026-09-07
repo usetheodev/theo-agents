@@ -190,7 +190,7 @@ describe('deleteSession — the registry seam accepts what the ecosystem actuall
  * Both details are load-bearing, and the first draft had neither. The plan is built literally rather
  * than through `planTranscriptGC` because what is under test is how the SWEEP treats its remover;
  * routing through the planner would make these assertions depend on retention policy. And a SECOND
- * transcript is required because `protectedTranscripts` protects the most recent one even with no
+ * transcript is required because `protectedTranscriptPaths` protects the most recent one even with no
  * pointer — "a GC that leaves a project with nothing to continue has destroyed the feature it was
  * protecting". With one session that one is the most recent, so it is always protected, the sweep
  * does nothing, and every assertion here would have passed by never running.
