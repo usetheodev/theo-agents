@@ -141,8 +141,12 @@ describe('createTauriAgentClient (@theokit/tauri)', () => {
 describe('runTurnToJsonl (@theokit/tauri/sidecar)', () => {
   it('surfaces a failed turn as a trailing {type:error} JSONL line, never swallowed (Rule 8)', async () => {
     const lines: string[] = []
-    // An empty module has no resolvable agent — streamAgentTurnInProcess fails fast (before any LLM call).
-    await runTurnToJsonl({}, 'no-key', 'hi', (line) => lines.push(line))
+    // An empty module has no resolvable agent — streamAgentTurnInProcess fails fast (before any LLM
+    // call). The cast is the point: since theokit#663 the parameter REFUSES this shape, so reaching
+    // the runtime path means reproducing a consumer with no type in the way (plain JS, or a module
+    // from a dynamic `import()` typed `any`). The guard must still turn it into an error LINE.
+    const notAModule = {} as unknown as Parameters<typeof runTurnToJsonl>[0]
+    await runTurnToJsonl(notAModule, 'no-key', 'hi', (line) => lines.push(line))
 
     expect(lines.length).toBeGreaterThan(0)
     const parsed = lines.map((l) => JSON.parse(l.trim()) as { type: string; errorText?: string })

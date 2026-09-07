@@ -82,12 +82,14 @@ describe('compileAgentModule (M2)', () => {
   })
 
   it('test_throws_typed_error_naming_source_on_non_agent_module', () => {
-    expect(() => compileAgentModule({ default: { hello: 1 } }, 'agents/bad.ts')).toThrow(
-      AgentDefinitionError,
-    )
-    expect(() => compileAgentModule({ default: { hello: 1 } }, 'agents/bad.ts')).toThrow(
-      /agents\/bad\.ts/,
-    )
+    // Deliberately not an agent module. The cast is the point of the test: a JS consumer, or a
+    // module arriving from a dynamic `import()` typed `any`, reaches the runtime with no type in
+    // the way — so the guard must still refuse it (usetheokit/theokit#663).
+    const NOT_AN_AGENT = { default: { hello: 1 } } as unknown as Parameters<
+      typeof compileAgentModule
+    >[0]
+    expect(() => compileAgentModule(NOT_AN_AGENT, 'agents/bad.ts')).toThrow(AgentDefinitionError)
+    expect(() => compileAgentModule(NOT_AN_AGENT, 'agents/bad.ts')).toThrow(/agents\/bad\.ts/)
   })
 
   it('test_gathers_toolboxes_and_gates_hitl_tool', () => {

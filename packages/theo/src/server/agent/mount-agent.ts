@@ -9,7 +9,11 @@
  * Request body — accepts the `@ai-sdk/react` `useChat` shape (`{ id, messages: UIMessage[] }`,
  * the typed-client path) AND a simple `{ message, sessionId? }` shape (M0/M1-style clients).
  */
-import { compileAgentModule, resolveEnabledSkills, streamAgentUIMessages } from '@theokit/agents'
+import {
+  compileLoadedAgentModule,
+  resolveEnabledSkills,
+  streamAgentUIMessages,
+} from '@theokit/agents'
 
 import type { RoutePolicy } from '../../core/contracts/route-policy.js'
 import { validateCsrfRequest, type CsrfMode } from '../security/csrf.js'
@@ -243,7 +247,17 @@ export async function mountAgent(
   if (admitted instanceof Response) return admitted
   const input = admitted
 
-  const compiled = compileAgentModule(mod, source)
+  // `mod` reaches this function from a dynamic `import()` of a path discovered at runtime (every
+  // caller passes `await loadModule(agent.filePath)`, or a value the decorator dispatcher already
+  // holds as `unknown`), so its shape is genuinely unknowable to the typechecker. This is the
+  // boundary where an untyped disk module meets the typed API, and the cast is what a boundary cast
+  // is for — the compile step still refuses anything that is not an agent module and throws
+  // `AgentDefinitionError` naming `source`.
+  //
+  // The in-process sibling is deliberately different: `streamAgentTurnInProcess` takes `AgentModule`
+  // because its consumers COMPOSE the module in code, where a type can catch the mistake before it
+  // ships (usetheokit/theokit#663).
+  const compiled = compileLoadedAgentModule(mod, source)
 
   // Now that the model is known, let the caller pick the credential for THAT provider.
   // `compiled.plugins` reaches the resolver so a provider the agent DECLARED can serve the model

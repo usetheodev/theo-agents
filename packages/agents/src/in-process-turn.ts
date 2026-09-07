@@ -23,7 +23,11 @@ import { TheokitAgentError } from '@theokit/sdk/errors'
  * the SDK awaits BEFORE the gated tool runs; the chunk is not the gate.
  */
 
-import { compileAgentModule, streamAgentUIMessages } from './bridge/agent-endpoint.js'
+import {
+  type AgentModule,
+  compileAgentModule,
+  streamAgentUIMessages,
+} from './bridge/agent-endpoint.js'
 import type { ApprovalPosture } from './bridge/approval-posture.js'
 import type { HitlDecision } from './bridge/hitl-plugin.js'
 import { resolveEnabledSkills } from './skills-resolver.js'
@@ -200,7 +204,7 @@ function postureResolver(
  * the SDK's `streamAgentUIMessages` generator.
  */
 export function streamAgentTurnInProcess(
-  mod: unknown,
+  mod: AgentModule,
   apiKey: string,
   input: StreamAgentTurnInProcessInput,
   deps: StreamAgentTurnDeps = { stream: streamAgentUIMessages },

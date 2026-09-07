@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+
+### Fixed
+
+- The in-process agent seam refuses a wrong module shape at compile time instead of on the first turn. `streamAgentTurnInProcess` and `compileAgentModule` took `unknown`, so a consumer that made its agent factory `async` and forwarded the un-awaited Promise shipped two releases in which no turn could run, with every static check green. Both now take the exported `AgentModule`; `@theokit/tauri/sidecar`'s `runTurnToJsonl` is narrowed alongside them. Entry points that load a module from a path discovered at runtime keep `unknown` and declare it by calling the new `compileLoadedAgentModule` (#663)
+
 ## [@theokit/agents 13.0.0-next.1, @theokit/presenter 0.9.0-next.0, @theokit/tauri 1.0.0-next.1, theokit 0.65.0-next.2] - 2026-09-06
 
 ### Added

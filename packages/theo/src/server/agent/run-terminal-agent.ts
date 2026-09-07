@@ -9,7 +9,7 @@
  * in-process registry — the M4 singleton's exact fit. No new runtime, no LLM call, no tool dispatch.
  */
 import {
-  compileAgentModule,
+  compileLoadedAgentModule,
   streamAgentUIMessages,
   type HumanInTheLoopOptions,
 } from '@theokit/agents'
@@ -45,7 +45,7 @@ export async function runAgentInTerminal(
   apiKey: string,
   input: RunTerminalAgentInput,
 ): Promise<{ sawError: boolean }> {
-  const compiled = compileAgentModule(mod, input.source)
+  const compiled = compileLoadedAgentModule(mod, input.source)
   const stdout = input.stdout ?? process.stdout
   const registry = input.registry ?? getApprovalRegistry()
   const sessionId = input.sessionId ?? crypto.randomUUID()

@@ -39,6 +39,12 @@ async function* scriptedRun(): AsyncGenerator {
 
 vi.mock('@theokit/agents', () => ({
   compileAgentModule: () => ({ tools: [], agents: {}, model: 'anthropic/claude-sonnet-4-6' }),
+  // theokit#663 — the served route compiles a module it loaded from disk.
+  compileLoadedAgentModule: () => ({
+    tools: [],
+    agents: {},
+    model: 'anthropic/claude-sonnet-4-6',
+  }),
   resolveEnabledSkills: () => undefined,
   streamAgentUIMessages: () => scriptedRun(),
 }))
