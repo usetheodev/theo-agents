@@ -21,6 +21,9 @@ const hoisted = vi.hoisted(() => ({ chunks: [] as Chunk[], lastStreamInput: null
 vi.mock('@theokit/agents', () => ({
   // Pass a pre-built compiled agent through the mod wrapper (avoids the decorator compile path here).
   compileAgentModule: (mod: { __compiled: unknown }) => mod.__compiled,
+  // theokit#663 — `runAgentInTerminal` receives a module loaded from a path, so it calls the
+  // disk-boundary name. The double answers to both.
+  compileLoadedAgentModule: (mod: { __compiled: unknown }) => mod.__compiled,
   streamAgentUIMessages: (_compiled: unknown, _apiKey: string, input: unknown) => {
     hoisted.lastStreamInput = input
     return (async function* () {

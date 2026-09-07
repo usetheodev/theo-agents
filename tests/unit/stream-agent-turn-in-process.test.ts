@@ -51,6 +51,15 @@ vi.mock('../../packages/agents/src/skills-resolver.js', () => ({
 const { streamAgentTurnInProcess, InProcessApprovalRequiredError } =
   await import('../../packages/agents/src/in-process-turn.js')
 
+/**
+ * The mocked `compileAgentModule` above accepts a `__compiled` envelope. That envelope is a
+ * TEST-DOUBLE protocol, not an agent module, so the real parameter type has no reason to admit it
+ * (`AgentModule`, usetheokit/theokit#663). The cast is where the double replaces the contract —
+ * stated once here rather than repeated at every call.
+ */
+const asModule = (double: { readonly __compiled: unknown }) =>
+  double as unknown as Parameters<typeof streamAgentTurnInProcess>[0]
+
 const GATED = {
   __compiled: {
     hitl: new Map([['deploy', { question: 'Deploy?', timeout: 12_345 }]]),
@@ -70,7 +79,7 @@ describe('streamAgentTurnInProcess (M35)', () => {
   it('passes the compiled agent + message + apiKey through to streamAgentUIMessages', async () => {
     hoisted.chunks = [{ type: 'text-delta', delta: 'hi' }, { type: 'finish' }]
     const chunks = await collect(
-      streamAgentTurnInProcess(PLAIN, 'sk-test', { message: 'hello', sessionId: 's1' }),
+      streamAgentTurnInProcess(asModule(PLAIN), 'sk-test', { message: 'hello', sessionId: 's1' }),
     )
     expect(chunks.map((c) => c.type)).toEqual(['text-delta', 'finish'])
     expect(hoisted.lastApiKey).toBe('sk-test')
@@ -83,7 +92,7 @@ describe('streamAgentTurnInProcess (M35)', () => {
 
   it('generates a sessionId when omitted', async () => {
     hoisted.chunks = [{ type: 'finish' }]
-    await collect(streamAgentTurnInProcess(PLAIN, 'sk', { message: 'x' }))
+    await collect(streamAgentTurnInProcess(asModule(PLAIN), 'sk', { message: 'x' }))
     const input = hoisted.lastStreamInput as { sessionId: string }
     expect(typeof input.sessionId).toBe('string')
     expect(input.sessionId.length).toBeGreaterThan(0)
@@ -94,14 +103,14 @@ describe('streamAgentTurnInProcess (M35)', () => {
   it('threads images through to streamAgentUIMessages when supplied', async () => {
     hoisted.chunks = [{ type: 'finish' }]
     const img = { data: 'aGk=', mimeType: 'image/png' }
-    await collect(streamAgentTurnInProcess(PLAIN, 'sk', { message: 'hi', images: [img] }))
+    await collect(streamAgentTurnInProcess(asModule(PLAIN), 'sk', { message: 'hi', images: [img] }))
     const input = hoisted.lastStreamInput as { images?: unknown }
     expect(input.images).toEqual([img])
   })
 
   it('omits images on a text-only turn (back-compat)', async () => {
     hoisted.chunks = [{ type: 'finish' }]
-    await collect(streamAgentTurnInProcess(PLAIN, 'sk', { message: 'hi' }))
+    await collect(streamAgentTurnInProcess(asModule(PLAIN), 'sk', { message: 'hi' }))
     const input = hoisted.lastStreamInput as { images?: unknown }
     expect(input.images).toBeUndefined()
   })
@@ -110,7 +119,11 @@ describe('streamAgentTurnInProcess (M35)', () => {
     hoisted.chunks = [{ type: 'finish' }]
     const awaitApproval = vi.fn().mockResolvedValue(true)
     await collect(
-      streamAgentTurnInProcess(GATED, 'sk', { message: 'go', sessionId: 's', awaitApproval }),
+      streamAgentTurnInProcess(asModule(GATED), 'sk', {
+        message: 'go',
+        sessionId: 's',
+        awaitApproval,
+      }),
     )
     const input = hoisted.lastStreamInput as {
       hitl?: {
@@ -144,7 +157,9 @@ describe('streamAgentTurnInProcess (M35)', () => {
         runContext: { projectRoot: '/x' },
       },
     }
-    await collect(streamAgentTurnInProcess(WITH_SKILLS, 'sk', { message: 'go', sessionId: 's' }))
+    await collect(
+      streamAgentTurnInProcess(asModule(WITH_SKILLS), 'sk', { message: 'go', sessionId: 's' }),
+    )
     // resolveEnabledSkills was called with the compiled resolver + run context...
     expect(hoisted.skillsResolved).toHaveLength(1)
     expect(hoisted.skillsResolved[0]).toMatchObject({
@@ -160,14 +175,14 @@ describe('streamAgentTurnInProcess (M35)', () => {
   it('does not call resolveEnabledSkills for a static (no-resolver) agent', async () => {
     hoisted.chunks = [{ type: 'finish' }]
     hoisted.skillsResolved = []
-    await collect(streamAgentTurnInProcess(PLAIN, 'sk', { message: 'x', sessionId: 's' }))
+    await collect(streamAgentTurnInProcess(asModule(PLAIN), 'sk', { message: 'x', sessionId: 's' }))
     expect(hoisted.skillsResolved).toHaveLength(0)
   })
 
   it('fails fast when a gated agent is run without an awaitApproval resolver', () => {
     // Constructing the generator eagerly-validates: a gated agent with no inline resolver would
     // silently BYPASS the human gate (like #99) — refuse loudly instead (Rule 8, fail-closed).
-    expect(() => streamAgentTurnInProcess(GATED, 'sk', { message: 'go' })).toThrow(
+    expect(() => streamAgentTurnInProcess(asModule(GATED), 'sk', { message: 'go' })).toThrow(
       InProcessApprovalRequiredError,
     )
   })

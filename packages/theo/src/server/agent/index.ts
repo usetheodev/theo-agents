@@ -32,6 +32,10 @@ export type {
   StreamAgentTurnDeps,
   InProcessApprovalRequest,
   InProcessAwaitApproval,
+  // theokit#663 — the parameter type crosses with the function. Exporting `streamAgentTurnInProcess`
+  // while withholding the type it now accepts would leave a consumer unable to NAME what it must
+  // pass, which is how the `unknown` got there in the first place.
+  AgentModule,
 } from '@theokit/agents'
 
 // MCP stdio transport + `ui://` app resources served by the MCP server.
