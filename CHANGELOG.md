@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `CONTRIBUTING.md` describes how releases actually work. It said the release engineer runs `npm publish`, which stopped being true when publishing moved to trusted publishing over OIDC, and it did not mention the one manual step a release cannot finish without — opening the Version Packages PR from the branch CI pushes, announced only in the run's annotations. Both gaps cost two hand-found releases and one issue filed against a design that was working as intended (#673)
+
 ### Fixed
 
 - A session someone declared protected is no longer deleted when its transcript cannot be read. `listSessions` fell back to the filename stem on every failure path, and under `@theokit/sdk` 5.x that stem is a one-way hash — so the fallback named no session at all, and GC keyed protection on it. Protection is now keyed by transcript path, with caller-supplied ids mapped forward through `transcriptPath`, which is the direction that has a function. The registry is never asked to remove an id nobody read, and `theo sessions gc` reports such collections separately, by path (#668)

@@ -106,9 +106,50 @@ weaker and calling it covered.
 
 ## How releases work
 
-The release engineer is the only person who runs `npm publish`. If your
-PR needs a new release to be visible to users, mention that in the PR
-description; the maintainer will queue the publish.
+**Nobody runs `npm publish`.** Publishing happens in `.github/workflows/release.yml`
+under npm trusted publishing (OIDC), so there is no token to hold and no local step
+that mints one. If your PR needs a release to be visible to users, say so in the PR
+description.
+
+### The one manual step, and where it is announced
+
+A release takes two passes through `main`, and the handoff between them is a human
+click — not by oversight.
+
+The reason it was built that way has since expired, and both halves are worth
+knowing. On 2026-08-23 Actions could not open pull requests here
+(`can_approve_pull_request_reviews=false`, measured across every repo and at the org
+level), so `changesets/action` would have failed on the version branch and the
+workflow pre-empted that. **Re-measured 2026-09-07: the flag is now `true` at both
+levels.** The restriction is gone; the manual step remains, now resting only on the
+second argument its author gave — that a person opening the PR is a stronger Rule 4
+gate than a bot doing it.
+
+Until that is revisited, this is the sequence:
+
+| pass | trigger | what CI does | what a person does |
+|---|---|---|---|
+| 1 | `develop` → `main` merges | versions the packages, pushes `changeset-release/main`, prints a `::notice` with the compare link | open the Version Packages PR from that link |
+| 2 | that PR merges | publishes to the registry | verify the versions resolve |
+
+**The link lives in the run's annotations**, not in the PR list and not in the run's
+conclusion:
+
+```
+[notice] Version Packages: Ready to review — open the PR at
+         https://github.com/usetheokit/theokit/compare/main...changeset-release/main?expand=1
+```
+
+Look there after pass 1. A run that versioned is green and shows no open PR, which
+reads exactly like a run that had nothing to do — the difference is the annotation.
+Two releases were cut on 2026-09-07 by someone who found the branch by hand and
+filed the design as a defect (#673) before reading the notice that was already
+there. Reading the run's annotations is one API call; concluding from the PR list
+that the run did nothing is the same "right answer, wrong object" mistake this file
+warns about for `node_modules/@theokit/sdk`.
+
+If the branch exists and no PR is open, the release is not stuck: it is waiting for
+that click.
 
 ### After publishing: check the examples still teach the truth
 
