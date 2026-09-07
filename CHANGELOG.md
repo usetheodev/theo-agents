@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [@theokit/agents 13.0.0-next.3, theokit 0.65.0-next.4] - 2026-09-07
+
 ### Fixed
 
 - A session someone declared protected is no longer deleted when its transcript cannot be read. `listSessions` fell back to the filename stem on every failure path, and under `@theokit/sdk` 5.x that stem is a one-way hash — so the fallback named no session at all, and GC keyed protection on it. Protection is now keyed by transcript path, with caller-supplied ids mapped forward through `transcriptPath`, which is the direction that has a function. The registry is never asked to remove an id nobody read, and `theo sessions gc` reports such collections separately, by path (#668)
