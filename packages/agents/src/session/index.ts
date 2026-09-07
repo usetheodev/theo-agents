@@ -10,6 +10,10 @@ export {
   forkBeforeUserTurn,
   listSessions,
   protectedTranscriptPaths,
+  // The migration path for #668, and it has to cross with the rename. A consumer holding a session
+  // id needs id -> path to use the renamed map at all; shipping the break without it would leave
+  // them a compile error and no way to fix it.
+  transcriptOf,
   SessionInUseError,
   SessionRegistryRemoverError,
   type DeleteSessionOptions,
