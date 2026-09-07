@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs'
 import { TheokitAgentError } from '@theokit/sdk/errors'
 import { transcriptRoot } from '@theokit/sdk/persistence'
 
-import { listSessions, protectedTranscripts, transcriptOf } from '../session-lifecycle.js'
+import { listSessions, protectedTranscriptPaths, transcriptOf } from '../session-lifecycle.js'
 
 import { awaitRegistryRemoval } from './registry-remover.js'
 
@@ -108,7 +108,7 @@ export interface TranscriptGCOptions {
   /**
    * Extra sessions this framework cannot see are live.
    *
-   * `protectedTranscripts` derives protection from THIS framework's pointer convention. A consumer
+   * `protectedTranscriptPaths` derives protection from THIS framework's pointer convention. A consumer
    * whose live-session registry lives elsewhere gets an INERT guard — silently, inside a guard that
    * deletes user transcripts. That is the shape of the consumer's own PS-002: declared, wired, never
    * called, and therefore reading as protection while protecting nothing.
@@ -182,7 +182,7 @@ export function planTranscriptGC(options: TranscriptGCOptions): TranscriptGCPlan
 
   const sessions = listSessions(options.cwd, root) // newest first
   const protectedBy = resolveProtection(
-    protectedTranscripts(options.cwd, root),
+    protectedTranscriptPaths(options.cwd, root),
     options.protectedIds,
     options.cwd,
     root,
@@ -356,7 +356,7 @@ export async function runTranscriptGC(
   // "was safe when we looked" into "is safe now".
   const protectedNow = options.apply
     ? resolveProtection(
-        protectedTranscripts(plan.cwd, plan.root),
+        protectedTranscriptPaths(plan.cwd, plan.root),
         options.protectedIds,
         plan.cwd,
         plan.root,

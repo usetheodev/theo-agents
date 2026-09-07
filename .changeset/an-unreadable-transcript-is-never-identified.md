@@ -20,8 +20,14 @@ Breaking, inside the unreleased 13.0.0 line:
 
 - `SessionSummary.id` is `string | undefined`, alongside a new `idSource: 'transcript' | 'unavailable'`.
   It is never derived from the filename.
-- `protectedTranscripts()` returns a map keyed by transcript path, not by session id. The new
-  `transcriptOf(id, cwd, root)` maps forward for callers that hold an id.
+- **`protectedTranscripts` is RENAMED to `protectedTranscriptPaths`, and the rename is the fix.** Its
+  keys changed from session ids to transcript paths while the signature stayed `Map<string, string>`,
+  so a consumer that mapped the keys forward through `transcriptPath` — correct when they were ids —
+  kept compiling and started double-mapping, leaving its protection array matching nothing. Measured
+  on a real consumer against this build: `deleteSession` collected a session holding a LIVE writer
+  lease. The old name is gone rather than aliased; a silent break that loses data is worse than a
+  loud one, and an alias would have preserved the silence. `transcriptOf(id, cwd, root)` maps forward
+  for callers that hold an id.
 - `GCCandidate.id`, `GCKept.id` and `GCError.id` admit `undefined` for the same reason.
 - `RunTranscriptGCResult` gains `orphaned` — transcripts collected whose session id could not be
   read, by path. A separate list rather than a second meaning inside `removed`, which answers "which

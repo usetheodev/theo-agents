@@ -9,7 +9,7 @@ export {
   deleteSession,
   forkBeforeUserTurn,
   listSessions,
-  protectedTranscripts,
+  protectedTranscriptPaths,
   SessionInUseError,
   SessionRegistryRemoverError,
   type DeleteSessionOptions,

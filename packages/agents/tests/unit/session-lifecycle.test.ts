@@ -9,7 +9,7 @@ import {
   SessionInUseError,
   deleteSession,
   listSessions,
-  protectedTranscripts,
+  protectedTranscriptPaths,
 } from '../../src/session/session-lifecycle.js'
 import { loadOrCreateSessionId, persistSessionId } from '../../src/session/session-pointer.js'
 import {
@@ -45,7 +45,7 @@ let unwritableRoot: string
 /**
  * Write a transcript with an EXPLICIT mtime.
  *
- * Recency ordering is real behaviour here — `protectedTranscripts` keeps the most recent — so two
+ * Recency ordering is real behaviour here — `protectedTranscriptPaths` keeps the most recent — so two
  * files written in the same millisecond would make the outcome depend on filesystem timestamp
  * resolution. `ageSeconds` says which is older, out loud. (The first draft of this file relied on
  * write order and the guard correctly refused to delete what the fixture had accidentally made the
@@ -163,14 +163,14 @@ describe('deleteSession — the two stores are reported separately', () => {
   })
 })
 
-describe('protectedTranscripts — three reasons, kept distinct', () => {
+describe('protectedTranscriptPaths — three reasons, kept distinct', () => {
   it('test_the_pointer_target_is_protected_and_says_why', async () => {
     writeTranscriptFile('pointed', 60)
     writeTranscriptFile('other', 0)
     await persistSessionId(CWD, 'pointed', root)
     // Keyed by transcript path since #668, so an unreadable transcript can still be matched. What
     // this test asserts is unchanged: the pointer's target is protected, and the reason says why.
-    expect(protectedTranscripts(CWD, root).get(transcriptPath(root, CWD, 'pointed'))).toMatch(
+    expect(protectedTranscriptPaths(CWD, root).get(transcriptPath(root, CWD, 'pointed'))).toMatch(
       /pointer/i,
     )
   })
@@ -178,7 +178,7 @@ describe('protectedTranscripts — three reasons, kept distinct', () => {
   it('test_the_most_recent_is_protected_even_without_a_pointer', () => {
     // A GC that leaves a project with nothing to `--continue` destroyed the feature it protected.
     writeTranscriptFile('only')
-    expect(protectedTranscripts(CWD, root).get(transcriptPath(root, CWD, 'only'))).toMatch(
+    expect(protectedTranscriptPaths(CWD, root).get(transcriptPath(root, CWD, 'only'))).toMatch(
       /most recent/i,
     )
   })
@@ -187,7 +187,7 @@ describe('protectedTranscripts — three reasons, kept distinct', () => {
     // "Skipped 4 sessions" is far less useful than why each was skipped, and retention is exactly
     // where an operator asks.
     writeTranscriptFile('a')
-    const reasons = [...protectedTranscripts(CWD, root).values()]
+    const reasons = [...protectedTranscriptPaths(CWD, root).values()]
     expect(reasons.every((r) => typeof r === 'string' && r.length > 0)).toBe(true)
   })
 })
@@ -316,7 +316,7 @@ describe('projectsRoot — one owner for the transcript layout', () => {
 /**
  * The protection check and the unlink are separated by an `await`, and nothing re-reads the check.
  *
- * `deleteSession` reads `protectedTranscripts` at the top, then hands control to the caller's
+ * `deleteSession` reads `protectedTranscriptPaths` at the top, then hands control to the caller's
  * registry remover — for up to `registryTimeoutMs` (30s by default, and `Infinity` is accepted) —
  * and only then unlinks. Every conclusion drawn before that await is a SNAPSHOT, and a user who
  * resumes the session during it makes the snapshot false. The file is deleted anyway and
@@ -331,7 +331,7 @@ describe('projectsRoot — one owner for the transcript layout', () => {
 describe('deleteSession — a snapshot taken before an await is not a fact after it', () => {
   /**
    * `doomed` must NOT be protected when the function starts, or the pre-check refuses and the test
-   * proves nothing about the window it exists to cover. `protectedTranscripts` keeps the most
+   * proves nothing about the window it exists to cover. `protectedTranscriptPaths` keeps the most
    * recent, so a second, newer transcript is what makes `doomed` deletable at t=0 — the same fixture
    * shape the lease tests above use, and for the same reason.
    */

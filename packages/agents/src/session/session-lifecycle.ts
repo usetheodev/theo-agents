@@ -205,7 +205,22 @@ const FIRST_RECORD_BYTES = 64 * 1024
  * is far less useful than one reporting why each was skipped, and retention policy is exactly where
  * an operator asks that question.
  */
-export function protectedTranscripts(
+/**
+ * RENAMED from `protectedTranscripts` by usetheokit/theokit#668, and the rename IS the fix for the
+ * second half of that issue.
+ *
+ * The keys changed from session ids to transcript paths, and the signature did not:
+ * `Map<string, string>` before and `Map<string, string>` after. A consumer that mapped the keys
+ * forward through `transcriptPath` — the correct thing to do when they were ids — went on compiling
+ * and started double-mapping, so its protection array matched nothing and its delete guard passed.
+ * Measured on TheoCode against this very build: `deleteSession` collected a session with a LIVE
+ * writer lease, and no type could have caught it.
+ *
+ * A silent break that loses data is worse than a loud one. The old name is GONE rather than aliased,
+ * so a caller finds out at compile time instead of at delete time. Aliasing it would have preserved
+ * exactly the silence this rename exists to remove.
+ */
+export function protectedTranscriptPaths(
   cwd: string,
   root: string = transcriptRoot(),
 ): Map<string, string> {
@@ -309,7 +324,7 @@ export async function deleteSession(
   if (options.force !== true) {
     // Protection is path-keyed so an unreadable transcript can still be matched (#668); the caller
     // speaks in ids, so the id is mapped forward here rather than the map being keyed backwards.
-    const reason = protectedTranscripts(options.cwd, root).get(
+    const reason = protectedTranscriptPaths(options.cwd, root).get(
       transcriptOf(sessionId, options.cwd, root),
     )
     if (reason !== undefined) throw new SessionInUseError(sessionId, reason)
@@ -370,7 +385,7 @@ export async function deleteSession(
   // recoverable direction this function already chose in the ordering comment above, and the reason
   // the error carries `registryRemoved`.
   if (options.force !== true) {
-    const nowProtected = protectedTranscripts(options.cwd, root).get(
+    const nowProtected = protectedTranscriptPaths(options.cwd, root).get(
       transcriptOf(sessionId, options.cwd, root),
     )
     if (nowProtected !== undefined) {
@@ -440,7 +455,7 @@ export function forkBeforeUserTurn(
   // exactly that set, so passing it is not extra safety — it is the guard finally being fed.
   forkTranscript(src, dst, {
     beforeRecordIndex: selected.index,
-    liveSessionPaths: [...protectedTranscripts(options.cwd, root).keys()].map((id) =>
+    liveSessionPaths: [...protectedTranscriptPaths(options.cwd, root).keys()].map((id) =>
       transcriptPath(root, options.cwd, id),
     ),
   })

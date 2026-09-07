@@ -1,7 +1,7 @@
 /**
  * T4.2 — the GC's pointer protection must be reachable by a consumer whose live sessions it cannot see.
  *
- * `protectedTranscripts` derives protection from THIS framework's pointer convention. For a consumer
+ * `protectedTranscriptPaths` derives protection from THIS framework's pointer convention. For a consumer
  * whose live-session pointer lives elsewhere, the guard is **inert — silently, inside a guard that
  * deletes user transcripts.** That is the same class as the consumer's own PS-002: a guard declared,
  * wired, and never called reads as protection while protecting nothing.

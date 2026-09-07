@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { planTranscriptGC, runTranscriptGC } from '../../src/session/gc/transcript-gc.js'
 import { projectDirFor } from '../../src/session/project-index.js'
-import { listSessions, protectedTranscripts } from '../../src/session/session-lifecycle.js'
+import { listSessions, protectedTranscriptPaths } from '../../src/session/session-lifecycle.js'
 
 /**
  * theokit#668 — "I could not read this transcript" and "this transcript belongs to nobody" are
@@ -80,7 +80,7 @@ describe('an unreadable transcript is listed but never identified (theokit#668)'
     // The mechanism, asserted directly: a map keyed by id cannot answer for a file whose id is
     // unknown, and no amount of care at the call site fixes that.
     const path = writeReadable('exec-only-one')
-    expect([...protectedTranscripts(CWD, root).keys()]).toEqual([path])
+    expect([...protectedTranscriptPaths(CWD, root).keys()]).toEqual([path])
   })
 
   it('test_the_registry_is_never_asked_to_remove_an_id_that_was_never_read', async () => {
