@@ -1,7 +1,7 @@
 /**
  * T4.2 — the GC's pointer protection must be reachable by a consumer whose live sessions it cannot see.
  *
- * `protectedTranscripts` derives protection from THIS framework's pointer convention. For a consumer
+ * `protectedTranscriptPaths` derives protection from THIS framework's pointer convention. For a consumer
  * whose live-session pointer lives elsewhere, the guard is **inert — silently, inside a guard that
  * deletes user transcripts.** That is the same class as the consumer's own PS-002: a guard declared,
  * wired, and never called reads as protection while protecting nothing.
@@ -131,14 +131,17 @@ describe('transcript GC — injected protection', () => {
     const plan = planTranscriptGC({ cwd, root, keepLast: 1, maxAgeDays: 30, now: NOW })
     const target = plan.candidates[0]
     expect(target, 'fixture produced no candidate').toBeDefined()
+    // These fixtures are readable, so the id is present; asserting it keeps the `!` below honest
+    // now that `GCCandidate.id` admits absence (usetheokit/theokit#668).
+    expect(target?.id, 'a readable fixture must carry its id').toBeDefined()
 
     const result = await runTranscriptGC(plan, {
       apply: true,
-      protectedIds: () => new Map([[target!.id, 'became live between plan and apply']]),
+      protectedIds: () => new Map([[target!.id!, 'became live between plan and apply']]),
     })
 
     expect(result.removed).not.toContain(target!.id)
-    expect(existsSync(transcriptPath(root, cwd, target!.id))).toBe(true)
+    expect(existsSync(transcriptPath(root, cwd, target!.id!))).toBe(true)
   })
 
   it('throwing_provider_fails_closed_on_apply', async () => {
