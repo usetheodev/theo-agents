@@ -68,10 +68,19 @@ describe('listSessions reports the id the caller knows (#654)', () => {
     expect(ids, 'on SDK 5.x the filename is a one-way hash of this id').toContain('older')
   })
 
-  it('test_a_transcript_with_no_readable_record_falls_back_to_the_filename', () => {
-    // Not a hypothetical: a transcript truncated mid-write, or one from before the SDK wrote the
-    // field. Reporting the on-disk name is worse than the id and far better than dropping the
-    // session out of the listing entirely — GC would then never see it.
+  it('test_a_transcript_with_no_readable_record_is_listed_without_an_id', () => {
+    // CHANGED by usetheokit/theokit#668, and worth saying why rather than quietly editing it.
+    //
+    // This test asserted the OLD contract — that an unreadable transcript reports the filename as
+    // its id — and that contract was the defect. It was written here during #654 with the reasoning
+    // "reporting the on-disk name is worse than the id and far better than dropping the session out
+    // of the listing". The second half is right and still holds: the entry is still listed. The
+    // first half is not. On 5.x the name is a one-way hash, so the fallback was not a worse id, it
+    // was an identifier belonging to no session — and protection was keyed on it, which made a
+    // DECLARED-protected session collectable.
+    //
+    // Listing an entry and naming it are separate properties. The entry survives; the name does not
+    // get invented.
     const path = (transcriptPath as (b: string, c: string, s: string) => string)(
       root,
       CWD,
@@ -83,6 +92,7 @@ describe('listSessions reports the id the caller knows (#654)', () => {
     const sessions = listSessions(CWD, root)
 
     expect(sessions, 'an unreadable transcript must still be listed').toHaveLength(1)
-    expect(sessions[0].id.length).toBeGreaterThan(0)
+    expect(sessions[0]?.id, 'no id may be invented from the filename').toBeUndefined()
+    expect(sessions[0]?.idSource).toBe('unavailable')
   })
 })

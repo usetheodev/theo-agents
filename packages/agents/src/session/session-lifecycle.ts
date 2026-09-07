@@ -85,7 +85,14 @@ export class SessionInUseError extends TheokitAgentError {
 
 /** One session as the lifecycle vocabulary sees it. */
 export interface SessionSummary {
-  readonly id: string
+  /**
+   * The session id read from the transcript's first record, or `undefined` when the record could
+   * not be read. It is NEVER derived from the filename: on `@theokit/sdk` 5.x the name is a one-way
+   * hash of the id, so a name-derived value would name no session at all (usetheokit/theokit#668).
+   */
+  readonly id: string | undefined
+  /** Where {@link SessionSummary.id} came from — so a caller can tell absence from a value. */
+  readonly idSource: 'transcript' | 'unavailable'
   /** Absolute path of the transcript file. */
   readonly transcript: string
   /** Last modification, for recency ordering. */
@@ -135,7 +142,13 @@ export function listSessions(cwd: string, root: string = transcriptRoot()): Sess
       isDirectory,
     )
     if (kind !== 'transcript') continue
-    found.push({ id: sessionIdOf(path, entry), transcript: path, modifiedAt })
+    const id = sessionIdOf(path)
+    found.push({
+      id,
+      idSource: id === undefined ? 'unavailable' : 'transcript',
+      transcript: path,
+      modifiedAt,
+    })
   }
   return found.sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime())
 }
@@ -155,11 +168,13 @@ export function listSessions(cwd: string, root: string = transcriptRoot()): Sess
  * Only the first record is read, and only a bounded prefix of it. A listing must stay cheap enough
  * that GC can call it, and the id does not change down the file.
  *
- * The filename stem is the fallback, not an error: a transcript truncated mid-write still has to
- * appear in the listing, because a session GC cannot see is a session GC never collects.
+ * There is NO filename fallback. A truncated transcript still appears in the listing — a session
+ * the GC cannot see is a session the GC never collects — but it appears WITHOUT an id, because the
+ * name is a convention and the record is the authority. Returning the stem made "I could not read
+ * this" indistinguishable from "this belongs to nobody", and protection was keyed on the result
+ * (usetheokit/theokit#668).
  */
-function sessionIdOf(path: string, entry: string): string {
-  const stem = entry.replace(/\.jsonl$/, '')
+function sessionIdOf(path: string): string | undefined {
   let fd: number | undefined
   try {
     fd = openSync(path, 'r')
@@ -177,14 +192,9 @@ function sessionIdOf(path: string, entry: string): string {
   } finally {
     if (fd !== undefined) closeSync(fd)
   }
-  return stem
+  return undefined
 }
 
-/**
- * Enough for the first JSONL record's envelope. The SDK's records carry the message body too, so a
- * long first turn can exceed this — in which case the JSON does not parse and the stem is used,
- * which is the same outcome as before this function existed.
- */
 const FIRST_RECORD_BYTES = 64 * 1024
 
 /**
@@ -203,21 +213,35 @@ export function protectedTranscripts(
   const sessions = listSessions(cwd, root)
 
   const pointer = readPointer(cwd, root)
-  if (pointer !== undefined) protectedBy.set(pointer, 'resumable session pointer')
+  if (pointer !== undefined) {
+    protectedBy.set(transcriptPath(root, cwd, pointer), 'resumable session pointer')
+  }
 
   // The most recent survives even without a pointer: it is what `--continue` would find, and a GC
   // that leaves a project with nothing to continue has destroyed the feature it was protecting.
-  if (sessions.length > 0 && !protectedBy.has(sessions[0].id)) {
-    protectedBy.set(sessions[0].id, 'most recent session')
+  if (sessions.length > 0 && !protectedBy.has(sessions[0].transcript)) {
+    protectedBy.set(sessions[0].transcript, 'most recent session')
   }
 
   for (const session of sessions) {
     // Third instance of the same upstream `.d.ts` gap (see `listSessions`). The predicate is real
     // and the negative test proves it fires — a live lease does refuse the delete.
     const hasWriter = (sessionHasWriter as (p: string) => boolean)(session.transcript)
-    if (hasWriter) protectedBy.set(session.id, 'active writer lease')
+    if (hasWriter) protectedBy.set(session.transcript, 'active writer lease')
   }
   return protectedBy
+}
+
+/**
+ * The transcript a session id would occupy, for keying protection.
+ *
+ * Protection runs id → PATH and never the reverse, because that is the direction with a function:
+ * `transcriptPath` is total on both majors, while 5.x's naming is a one-way hash. Keying on the id
+ * meant a transcript nobody could read could not be matched against anything, so a session someone
+ * had DECLARED protected became collectable (usetheokit/theokit#668).
+ */
+export function transcriptOf(id: string, cwd: string, root: string = transcriptRoot()): string {
+  return transcriptPath(root, cwd, id)
 }
 
 /** The pointer's target id, or `undefined`. Local because only protection reads it. */
@@ -283,7 +307,11 @@ export async function deleteSession(
 ): Promise<DeleteSessionResult> {
   const root = options.root ?? transcriptRoot()
   if (options.force !== true) {
-    const reason = protectedTranscripts(options.cwd, root).get(sessionId)
+    // Protection is path-keyed so an unreadable transcript can still be matched (#668); the caller
+    // speaks in ids, so the id is mapped forward here rather than the map being keyed backwards.
+    const reason = protectedTranscripts(options.cwd, root).get(
+      transcriptOf(sessionId, options.cwd, root),
+    )
     if (reason !== undefined) throw new SessionInUseError(sessionId, reason)
   }
 
@@ -342,7 +370,9 @@ export async function deleteSession(
   // recoverable direction this function already chose in the ordering comment above, and the reason
   // the error carries `registryRemoved`.
   if (options.force !== true) {
-    const nowProtected = protectedTranscripts(options.cwd, root).get(sessionId)
+    const nowProtected = protectedTranscripts(options.cwd, root).get(
+      transcriptOf(sessionId, options.cwd, root),
+    )
     if (nowProtected !== undefined) {
       throw new SessionInUseError(sessionId, nowProtected, registryRemoved)
     }

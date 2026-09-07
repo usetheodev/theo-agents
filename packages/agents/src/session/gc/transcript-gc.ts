@@ -1,9 +1,9 @@
 import { rmSync } from 'node:fs'
 
 import { TheokitAgentError } from '@theokit/sdk/errors'
-import { transcriptPath, transcriptRoot } from '@theokit/sdk/persistence'
+import { transcriptRoot } from '@theokit/sdk/persistence'
 
-import { listSessions, protectedTranscripts } from '../session-lifecycle.js'
+import { listSessions, protectedTranscripts, transcriptOf } from '../session-lifecycle.js'
 
 import { awaitRegistryRemoval } from './registry-remover.js'
 
@@ -82,14 +82,16 @@ export class GCFloorError extends TheokitAgentError {
 
 /** A transcript the policy would collect. */
 export interface GCCandidate {
-  readonly id: string
+  /** `undefined` when the transcript could not be read — see `SessionSummary.id` (#668). */
+  readonly id: string | undefined
   readonly transcript: string
   readonly modifiedAt: Date
 }
 
 /** A transcript the policy keeps, and why. */
 export interface GCKept {
-  readonly id: string
+  /** `undefined` when the transcript could not be read — see `SessionSummary.id` (#668). */
+  readonly id: string | undefined
   /** Human-readable protection reason — recency, policy, lease, or unreadable age. */
   readonly reason: string
 }
@@ -147,6 +149,8 @@ export interface TranscriptGCPlan {
 function resolveProtection(
   builtin: ReadonlyMap<string, string>,
   provider: (() => ReadonlyMap<string, string>) | undefined,
+  cwd: string,
+  root: string,
 ): ReadonlyMap<string, string> {
   if (provider === undefined) return builtin
   let extra: ReadonlyMap<string, string>
@@ -155,8 +159,12 @@ function resolveProtection(
   } catch (cause) {
     throw new GCProtectionUnavailableError(cause)
   }
-  const union = new Map(extra)
-  for (const [id, reason] of builtin) union.set(id, reason)
+  // The caller speaks in session ids, which is the vocabulary it has; protection is matched on
+  // transcript paths, which is the only key an unreadable transcript can still answer to. The
+  // translation happens HERE, once, in the direction that has a function (usetheokit/theokit#668).
+  const union = new Map<string, string>()
+  for (const [id, reason] of extra) union.set(transcriptOf(id, cwd, root), reason)
+  for (const [path, reason] of builtin) union.set(path, reason)
   return union
 }
 
@@ -176,13 +184,15 @@ export function planTranscriptGC(options: TranscriptGCOptions): TranscriptGCPlan
   const protectedBy = resolveProtection(
     protectedTranscripts(options.cwd, root),
     options.protectedIds,
+    options.cwd,
+    root,
   )
 
   const candidates: GCCandidate[] = []
   const kept: GCKept[] = []
 
   for (const [index, session] of sessions.entries()) {
-    const protection = protectedBy.get(session.id)
+    const protection = protectedBy.get(session.transcript)
     if (protection !== undefined) {
       kept.push({ id: session.id, reason: protection }) // invariant 3, plus pointer/most-recent
       continue
@@ -216,7 +226,8 @@ export function planTranscriptGC(options: TranscriptGCOptions): TranscriptGCPlan
 
 /** What one candidate's removal did, or why it did not. */
 export interface GCError {
-  readonly id: string
+  /** `undefined` when the failure IS that no id could be read (#668). */
+  readonly id: string | undefined
   readonly message: string
 }
 
@@ -224,6 +235,15 @@ export interface RunTranscriptGCResult {
   readonly dryRun: boolean
   /** Ids that were (or, in a dry run, would be) removed. */
   readonly removed: readonly string[]
+  /**
+   * Transcripts collected whose session id could NOT be read, by path.
+   *
+   * A separate list rather than a second meaning inside `removed`: that one answers "which sessions
+   * did I collect", this one answers "which files did I collect that I could not name". Folding them
+   * together would put two kinds of string in one array and make every consumer guess which it held
+   * (usetheokit/theokit#668).
+   */
+  readonly orphaned: readonly string[]
   /** One entry per candidate that failed — the rest still ran. */
   readonly errors: readonly GCError[]
 }
@@ -236,6 +256,71 @@ export interface RunTranscriptGCResult {
  * absent is the desired end state, and reporting it as failure would make the second run of an
  * interrupted GC look broken.
  */
+/** What the registry half decided for one candidate: a note to report, and whether to unlink. */
+interface RegistryOutcome {
+  readonly note?: GCError
+  readonly unlink: boolean
+}
+
+/**
+ * Take the registry half for one candidate, before anything is unlinked.
+ *
+ * Registry first (EC-3). A failure here SKIPS the unlink: an orphan transcript is collected next
+ * sweep, an orphan registry entry is collected by nothing.
+ *
+ * A candidate with no id is the other outcome, and it is not a failure: the transcript is still
+ * collected, and what stops is asserting an identity nobody read. Passing the filename instead was
+ * the second half of usetheokit/theokit#668 — the file was unlinked and the removal named a session
+ * that never existed.
+ */
+async function releaseFromRegistry(
+  candidate: GCCandidate,
+  options: {
+    readonly removeFromRegistry?: (id: string) => unknown
+    readonly registryTimeoutMs?: number
+  },
+): Promise<RegistryOutcome> {
+  if (candidate.id === undefined) {
+    return { note: { id: undefined, message: UNNAMEABLE_COLLECTION }, unlink: true }
+  }
+  if (options.removeFromRegistry === undefined) return { unlink: true }
+  try {
+    // Bounded by the SAME helper `deleteSession` uses. The first implementation of this seam used a
+    // bare `await`, and the consequence was not a style point: a registry that never answered hung
+    // the entire sweep — not this session, every session after it, with no error and no output. The
+    // single-session path was already tested against exactly that; the path that runs unattended
+    // over a whole project was not.
+    await awaitRegistryRemoval(
+      options.removeFromRegistry(candidate.id),
+      candidate.id,
+      options.registryTimeoutMs,
+    )
+    return { unlink: true }
+  } catch (error) {
+    return {
+      note: {
+        id: candidate.id,
+        message: `registry removal failed, transcript kept: ${(error as Error).message}`,
+      },
+      unlink: false,
+    }
+  }
+}
+
+/** Why a collected transcript reached no registry: see the call site and usetheokit/theokit#668. */
+const UNNAMEABLE_COLLECTION =
+  'transcript collected without a registry removal: its session id could not be read, and a fabricated one would name no session'
+
+/**
+ * Record a collection under the list that can name it. Extracted because the ENOENT path and the
+ * success path must agree: a transcript already gone is still collected, and still unnameable if its
+ * id was never read (usetheokit/theokit#668).
+ */
+function recordRemoval(candidate: GCCandidate, removed: string[], orphaned: string[]): void {
+  if (candidate.id === undefined) orphaned.push(candidate.transcript)
+  else removed.push(candidate.id)
+}
+
 export async function runTranscriptGC(
   plan: TranscriptGCPlan,
   options: {
@@ -263,55 +348,46 @@ export async function runTranscriptGC(
   },
 ): Promise<RunTranscriptGCResult> {
   const removed: string[] = []
+  const orphaned: string[] = []
   const errors: GCError[] = []
 
   // Invariant 4 — the TOCTOU backstop. The plan is a snapshot; between snapshot and delete a user
   // can resume a session or a process can take a lease. Re-reading protection HERE is what turns
   // "was safe when we looked" into "is safe now".
   const protectedNow = options.apply
-    ? resolveProtection(protectedTranscripts(plan.cwd, plan.root), options.protectedIds)
+    ? resolveProtection(
+        protectedTranscripts(plan.cwd, plan.root),
+        options.protectedIds,
+        plan.cwd,
+        plan.root,
+      )
     : new Map<string, string>()
 
   for (const candidate of plan.candidates) {
-    if (protectedNow.has(candidate.id)) continue // became live after planning — leave it alone
+    if (protectedNow.has(candidate.transcript)) continue // became live after planning — leave it
 
     if (!options.apply) {
-      removed.push(candidate.id)
+      if (candidate.id === undefined) orphaned.push(candidate.transcript)
+      else removed.push(candidate.id)
       continue
     }
-    if (options.removeFromRegistry !== undefined) {
-      // Registry first (EC-3). A failure here skips the unlink: an orphan transcript is collected
-      // next sweep, an orphan registry entry is collected by nothing.
-      try {
-        // Bounded by the SAME helper `deleteSession` uses. The first implementation of this seam
-        // used a bare `await` here, and the consequence was not a style point: a registry that never
-        // answered hung the entire sweep — not this session, every session after it, with no error
-        // and no output. The single-session path was already tested against exactly that; the path
-        // that runs unattended over a whole project was not.
-        await awaitRegistryRemoval(
-          options.removeFromRegistry(candidate.id),
-          candidate.id,
-          options.registryTimeoutMs,
-        )
-      } catch (error) {
-        errors.push({
-          id: candidate.id,
-          message: `registry removal failed, transcript kept: ${(error as Error).message}`,
-        })
-        continue
-      }
-    }
+    const registry = await releaseFromRegistry(candidate, options)
+    if (registry.note !== undefined) errors.push(registry.note)
+    if (!registry.unlink) continue
     try {
-      rmSync(transcriptPath(plan.root, plan.cwd, candidate.id))
-      removed.push(candidate.id)
+      // The path the plan FOUND, not one re-derived from the id. Re-deriving it asked the same
+      // reverse question that #668 is about, and it can only ever agree with `candidate.transcript`
+      // when the id was readable — which is exactly the case where it was redundant.
+      rmSync(candidate.transcript)
+      recordRemoval(candidate, removed, orphaned)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        removed.push(candidate.id)
+        recordRemoval(candidate, removed, orphaned)
         continue
       }
       errors.push({ id: candidate.id, message: (error as Error).message })
     }
   }
 
-  return { dryRun: !options.apply, removed, errors }
+  return { dryRun: !options.apply, removed, orphaned, errors }
 }

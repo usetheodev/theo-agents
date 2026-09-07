@@ -168,13 +168,19 @@ describe('protectedTranscripts — three reasons, kept distinct', () => {
     writeTranscriptFile('pointed', 60)
     writeTranscriptFile('other', 0)
     await persistSessionId(CWD, 'pointed', root)
-    expect(protectedTranscripts(CWD, root).get('pointed')).toMatch(/pointer/i)
+    // Keyed by transcript path since #668, so an unreadable transcript can still be matched. What
+    // this test asserts is unchanged: the pointer's target is protected, and the reason says why.
+    expect(protectedTranscripts(CWD, root).get(transcriptPath(root, CWD, 'pointed'))).toMatch(
+      /pointer/i,
+    )
   })
 
   it('test_the_most_recent_is_protected_even_without_a_pointer', () => {
     // A GC that leaves a project with nothing to `--continue` destroyed the feature it protected.
     writeTranscriptFile('only')
-    expect(protectedTranscripts(CWD, root).get('only')).toMatch(/most recent/i)
+    expect(protectedTranscripts(CWD, root).get(transcriptPath(root, CWD, 'only'))).toMatch(
+      /most recent/i,
+    )
   })
 
   it('test_the_reasons_are_not_collapsed_into_a_boolean', () => {

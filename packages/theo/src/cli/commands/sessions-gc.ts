@@ -45,23 +45,37 @@ export function formatGcPlan(
 ): string[] {
   const lines: string[] = [result.dryRun ? '  Dry run — nothing was deleted.' : '  Applied.', '']
 
-  if (result.removed.length === 0) {
+  if (result.removed.length === 0 && result.orphaned.length === 0) {
     lines.push('  Nothing to collect.')
-  } else {
+  }
+  if (result.removed.length > 0) {
     lines.push(`  ${result.dryRun ? 'Would remove' : 'Removed'} ${String(result.removed.length)}:`)
     for (const id of result.removed) lines.push(`    - ${id}`)
+  }
+  // Reported separately and by PATH, because these have no session id to print — the transcript
+  // could not be read. Folding them into the count above would say a number of sessions were
+  // collected while naming fewer, and printing a filename in the id column would put back the
+  // fabricated identity #668 removed. An operator who sees one of these knows a registry entry may
+  // have outlived its transcript, which is the fact worth acting on.
+  if (result.orphaned.length > 0) {
+    lines.push(
+      `  ${result.dryRun ? 'Would remove' : 'Removed'} ${String(result.orphaned.length)} with no readable session id:`,
+    )
+    for (const path of result.orphaned) lines.push(`    - ${path}`)
   }
 
   // The kept list carries the REASON per session. "Skipped 4" tells an operator nothing; "kept
   // because it holds an active writer lease" tells them whether to go stop something.
   if (plan.kept.length > 0) {
     lines.push('', `  Kept ${String(plan.kept.length)}:`)
-    for (const keep of plan.kept) lines.push(`    - ${keep.id} — ${keep.reason}`)
+    for (const keep of plan.kept)
+      lines.push(`    - ${keep.id ?? '(id unreadable)'} — ${keep.reason}`)
   }
 
   if (result.errors.length > 0) {
     lines.push('', `  ${String(result.errors.length)} failed (the rest still ran):`)
-    for (const error of result.errors) lines.push(`    ✗ ${error.id} — ${error.message}`)
+    for (const error of result.errors)
+      lines.push(`    ✗ ${error.id ?? '(id unreadable)'} — ${error.message}`)
   }
 
   return lines
