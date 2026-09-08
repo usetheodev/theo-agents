@@ -99,8 +99,38 @@ export interface SettingSourcesSelection {
    * is enough — and the extra strictness is deliberate: this reads a `hooks.json` that executes
    * shell out of a directory that usually arrived with the clone.
    */
-  readonly claudeCode?: ProjectSettingsGrant
+  readonly claudeCode?: ProjectSettingsGrant & {
+    /**
+     * #686 — WHICH surfaces of the foreign root to import. Absent means all of them, which is what
+     * every caller before this meant and still means.
+     *
+     * The distinction is the reason the grant exists. `.claude/` usually arrives with the clone and
+     * its `hooks.json` executes shell, so "take the skills, refuse the hooks" is the ordinary thing
+     * to want — and before this the only choices were all of it or none of it.
+     *
+     * Requires `@theokit/sdk >= 5.4.0`, which is where the narrowed form landed. On an older SDK the
+     * runtime drops an unrecognised shape in SILENCE, so declaring it there would import nothing at
+     * all rather than importing less — refused at resolve time instead.
+     */
+    readonly import?: readonly CompatSurface[]
+  }
 }
+
+/**
+ * The surfaces a foreign configuration root can contribute.
+ *
+ * Written out rather than imported, for the same reason as the `claude-code` literal below:
+ * `CompatSurface` does not exist in `@theokit/sdk@4.52.1`, this package's declared floor, and a gate
+ * that cannot build against its own minimum dependency is worse than a constant that has been
+ * checked. Verified against the published 5.4.0 `.d.ts`, where the union is
+ * `"hooks" | "plugins" | "skills" | "subagents"` — note `subagents`, not `agents`.
+ */
+export type CompatSurface = 'hooks' | 'plugins' | 'skills' | 'subagents'
+
+/** What `resolveCompatSources` returns: the whole root, or the root narrowed to some surfaces. */
+export type ResolvedCompatSource =
+  | 'claude-code'
+  | { readonly kind: 'claude-code'; readonly import: readonly CompatSurface[] }
 
 /**
  * Refusal to read the working directory for lack of trust.
@@ -181,7 +211,7 @@ export function resolveSettingSources(
  */
 export function resolveCompatSources(
   selection: SettingSourcesSelection | undefined,
-): readonly string[] {
+): readonly ResolvedCompatSource[] {
   if (selection?.claudeCode === undefined) return []
 
   const posture = selection.claudeCode.trustedBy
@@ -209,5 +239,19 @@ export function resolveCompatSources(
   // The check matters more than a spelling normally would: the SDK DROPS an unrecognised name in
   // silence, so a wrong constant here is a forward that is declared, gated, projected, and then
   // discarded with no message — the exact failure #634 exists to prevent.
+  // #686 — an EMPTY list is the one input where "nothing" and "unset, so everything" are both
+  // defensible readings, and picking either would settle a security question by convention. Refused
+  // so the caller says which they meant.
+  const surfaces = selection.claudeCode.import
+  if (surfaces?.length === 0) {
+    throw new UntrustedSettingSourceError(
+      `\`claudeCode.import\` is an empty list, which could mean "no surfaces" or "unset, so all of ` +
+        `them" — and the two differ by whether <cwd>/.claude/hooks.json executes. Name the surfaces ` +
+        `you want, or omit \`import\` to take the whole root (usetheokit/theokit#686).`,
+      selection.claudeCode.trustedBy.source,
+      'projectSettings',
+    )
+  }
+  if (surfaces !== undefined) return [{ kind: 'claude-code', import: [...surfaces] }]
   return ['claude-code']
 }

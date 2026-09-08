@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import type { Server } from 'node:http'
 import { startDevServer } from '../../packages/theo/src/cli/commands/dev.js'
 import { safeClose } from './helpers/safe-close.js'
+import { waitForServer } from './helpers/wait-for-server.js'
 
 function makeProject(opts: { devtoolsConfig?: string }): string {
   const root = mkdtempSync(join(tmpdir(), 'theo-devtools-inject-'))
@@ -51,6 +52,8 @@ describe('T1.2 — devtools injection (default — devtools enabled)', () => {
     server = await startDevServer(root, { port: 0 })
     const addr = (server.httpServer as Server).address()
     port = typeof addr === 'object' && addr ? addr.port : 0
+    // #699 — the promise settling assigned the address; it did not make the listener accept.
+    await waitForServer(port)
   }, 30000)
 
   afterAll(async () => {

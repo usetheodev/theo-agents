@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `settingSources.claudeCode.import` names WHICH surfaces of a foreign configuration root to take — `hooks`, `plugins`, `skills`, `subagents`. Absent still means all of them; an empty list is refused rather than guessed, because "none" and "unset, so all" differ by whether `.claude/hooks.json` executes shell (#686)
+
+### Fixed
+
+- The dev-server integration tests wait until the server accepts a connection instead of fetching the port the instant `startDevServer` resolves. Two release pull requests failed on `TypeError: fetch failed` in one day; the helper fails loudly on a real boot failure rather than masking it with a sleep (#699)
+
+### Added
+
 - `AgentBuilder.create().hookApproval(gate)` — the fluent twin of `defineAgent({ hookApproval })`. The gate shipped in `13.0.0-next.7` reachable through one authoring door and not the other, and a consumer that builds with the fluent chain had no way to reach it at all. A guard now builds the same agent through both doors and asserts they arrive at the same compiled waist (#686)
 
 ## [@theokit/agents 13.0.0-next.7] - 2026-09-08

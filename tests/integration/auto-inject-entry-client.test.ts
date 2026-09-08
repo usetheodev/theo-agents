@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startDevServer } from '../../packages/theo/src/cli/commands/dev.js'
 import { safeClose } from './helpers/safe-close.js'
+import { waitForServer } from './helpers/wait-for-server.js'
 import type { Server } from 'node:http'
 
 /**
@@ -47,6 +48,8 @@ beforeAll(async () => {
   server = await startDevServer(tmpRoot, { port: 0 })
   const addr = (server.httpServer as Server).address()
   port = typeof addr === 'object' && addr ? addr.port : 0
+  // #699 — the promise settling assigned the address; it did not make the listener accept.
+  await waitForServer(port)
 }, 30000)
 
 afterAll(async () => {

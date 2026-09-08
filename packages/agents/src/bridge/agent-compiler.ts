@@ -30,6 +30,7 @@ import type {
 } from '../types.js'
 
 import type { HookApprovalGate } from './sdk-adapter-create-options.js'
+import type { ResolvedCompatSource } from './setting-sources-gate.js'
 
 /**
  * M53 — the input shape `compileTools`/`compileHitlGates` consume, declared WITH them now that the
@@ -275,7 +276,7 @@ export interface CompiledAgentOptions {
    * Resolved at compile time by `resolveCompatSources`, exactly like `settingSources`: a value here
    * can only hold a source some posture granted, so the adapter projects rather than decides.
    */
-  compatSources?: readonly string[]
+  compatSources?: readonly ResolvedCompatSource[]
   /**
    * #686 — the consumer's pre-spawn approval gate, forwarded to `Agent.create({ local: { hooks } })`.
    *
