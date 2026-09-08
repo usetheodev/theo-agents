@@ -20,6 +20,8 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import type { CompatSurface, ResolvedCompatSource } from '../../src/bridge/setting-sources-gate.js'
+import { resolveCompatSources } from '../../src/bridge/setting-sources-gate.js'
 import { loadCustomCommands } from '../../src/config/custom-commands.js'
 
 function project(): string {
@@ -98,5 +100,71 @@ describe('a declared foreign root reaches commands too (theocode B-152)', () => 
 
     const review = result.commands.find((c) => c.name === 'review')
     expect(review?.path, 'this project owns its own name').toContain('.theokit')
+  })
+})
+
+/**
+ * ...and a NARROWED root must still be able to name it (#704).
+ *
+ * `#686` let a consumer narrow the foreign root to named surfaces. Measured 2026-09-08 against
+ * TheoCode v0.21.0, which shipped `import: ['skills', 'subagents', 'plugins']`: every narrowed
+ * list silently stopped reading `.claude/commands/`, because the loader tested string equality
+ * (`sources.includes('claude-code')`) against a union whose narrowed member is an OBJECT.
+ *
+ * The root defect was the vocabulary, not the test: `CompatSurface` had no `commands`, so the
+ * narrowing could not express the surface it disabled and nobody could opt back in. An enumeration
+ * used to narrow a root must cover every surface that root feeds, or it is not a narrowing — it is
+ * an undeclared drop, which is the silence this whole file exists to remove.
+ *
+ * These feed the loader the REAL output of `resolveCompatSources` rather than hand-built objects,
+ * so they fail if the two ever disagree about the shape again.
+ */
+describe('a NARROWED foreign root can still name commands (#704)', () => {
+  const POSTURE = { level: 'trusted', source: 'env', allows: { projectSettings: true } } as const
+
+  function narrowedTo(surfaces: readonly CompatSurface[]): readonly ResolvedCompatSource[] {
+    return resolveCompatSources({ claudeCode: { trustedBy: POSTURE, import: surfaces } })
+  }
+
+  it('test_a_narrowed_list_that_names_commands_loads_the_foreign_command', () => {
+    const dir = project()
+    writeCommand(dir, '.claude', 'review', 'Review this.\n')
+
+    const result = loadCustomCommands({
+      projectDir: dir,
+      projectTrusted: true,
+      compatSources: narrowedTo(['skills', 'commands']),
+    })
+
+    expect(result.commands.map((c) => c.name)).toContain('review')
+  })
+
+  it('test_a_narrowed_list_that_omits_commands_does_NOT_load_it', () => {
+    // The discriminator. Without it the case above passes for a loader that ignores the list
+    // entirely — and this is also the honest reading of an explicit list: not naming it excludes it.
+    const dir = project()
+    writeCommand(dir, '.claude', 'review', 'Review this.\n')
+
+    const result = loadCustomCommands({
+      projectDir: dir,
+      projectTrusted: true,
+      compatSources: narrowedTo(['skills', 'subagents', 'plugins']),
+    })
+
+    expect(result.commands.map((c) => c.name)).not.toContain('review')
+  })
+
+  it('test_the_UNnarrowed_root_still_grants_commands', () => {
+    // `import` omitted means the whole root, so every surface it feeds comes with it.
+    const dir = project()
+    writeCommand(dir, '.claude', 'review', 'Review this.\n')
+
+    const result = loadCustomCommands({
+      projectDir: dir,
+      projectTrusted: true,
+      compatSources: resolveCompatSources({ claudeCode: { trustedBy: POSTURE } }),
+    })
+
+    expect(result.commands.map((c) => c.name)).toContain('review')
   })
 })

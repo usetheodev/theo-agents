@@ -11,6 +11,7 @@
     "theokit": "0.64.0"
   },
   "changesets": [
+    "a-foreign-root-can-be-imported-in-part",
     "agents-move-inside-the-server",
     "an-unreadable-transcript-is-never-identified",
     "both-authoring-doors-reach-the-gate",
@@ -24,6 +25,7 @@
     "studio-is-no-longer-a-declared-peer",
     "tauri-is-released-because-its-peer-moved",
     "template-pin-admits-the-published-stable",
+    "the-dev-server-tests-wait-for-readiness",
     "the-five-concepts-in-every-generated-app",
     "the-gate-vocabulary-crosses",
     "the-hook-gate-crosses-or-refuses",

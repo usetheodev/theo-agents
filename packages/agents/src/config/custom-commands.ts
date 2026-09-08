@@ -6,6 +6,19 @@
 import { type Stats, readFileSync, readdirSync, statSync } from 'node:fs'
 import { extname, join, relative } from 'node:path'
 
+import type { ResolvedCompatSource } from '../bridge/setting-sources-gate.js'
+
+/**
+ * The narrowed half of `ResolvedCompatSource`, split out because the union's other half is the
+ * string literal `'claude-code'` — and `string | 'claude-code'` collapses to `string`, which would
+ * make the object arm unreachable to the type system.
+ *
+ * Its `kind` is that one literal today, so the loader below does not re-check it. A second foreign
+ * dialect would widen it, and would have to revisit `COMPAT_COMMANDS_DIR` in the same breath: the
+ * directory this reads is `.claude/`, not "whichever dialect asked".
+ */
+type NarrowedCompatSource = Exclude<ResolvedCompatSource, string>
+
 import { frontmatterValue, splitFrontmatter } from './frontmatter.js'
 
 /**
@@ -87,7 +100,7 @@ export interface LoadCustomCommandsInput {
    * command is a prompt that runs on the operator's behalf, and this directory is usually written
    * for a different product and arrives with the repository.
    */
-  readonly compatSources?: readonly string[]
+  readonly compatSources?: readonly (string | NarrowedCompatSource)[]
   readonly builtinNames?: readonly string[]
   /** Where a shadow, a duplicate, or a malformed file is reported. */
   readonly onWarn?: (message: string) => void
@@ -118,6 +131,25 @@ const CLAUDE_CODE_SOURCE = 'claude-code'
 const IGNORE_WARNING = (): void => undefined
 
 /**
+ * Does the caller's declaration reach the foreign COMMANDS directory?
+ *
+ * Two shapes, because `#686` let a consumer narrow the root: the bare source name grants every
+ * surface it feeds, and the narrowed form grants only the ones it names. Testing membership with
+ * `includes(CLAUDE_CODE_SOURCE)` — which is what this did until #704 — reads the narrowed form as
+ * *not declared*, because an object is not that string. The directory then went unread with no
+ * message, which is the exact silence the docblock above says this code exists to remove.
+ */
+function declaresCommands(sources: LoadCustomCommandsInput['compatSources']): boolean {
+  return (
+    sources?.some((source) =>
+      typeof source === 'string'
+        ? source === CLAUDE_CODE_SOURCE
+        : source.import.includes('commands'),
+    ) === true
+  )
+}
+
+/**
  * Load `.theokit/commands/*.md` from the project and the user, project winning.
  *
  * Precedence is project-over-user because the project is the more specific scope: a repository that
@@ -139,7 +171,7 @@ const IGNORE_WARNING = (): void => undefined
 function projectCommandDirs(input: LoadCustomCommandsInput): string[] {
   if (input.projectDir === undefined) return []
   const dirs: string[] = []
-  if (input.compatSources?.includes(CLAUDE_CODE_SOURCE) === true) {
+  if (declaresCommands(input.compatSources)) {
     dirs.push(join(input.projectDir, COMPAT_COMMANDS_DIR))
   }
   dirs.push(join(input.projectDir, COMMANDS_DIR))

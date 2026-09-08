@@ -125,7 +125,10 @@ export interface SettingSourcesSelection {
  * checked. Verified against the published 5.4.0 `.d.ts`, where the union is
  * `"hooks" | "plugins" | "skills" | "subagents"` — note `subagents`, not `agents`.
  */
-export type CompatSurface = 'hooks' | 'plugins' | 'skills' | 'subagents'
+// `commands` is loaded by THIS package rather than by the SDK, and was missing here until #704.
+// An enumeration used to NARROW a root must cover every surface that root feeds: a name absent
+// from the vocabulary is a surface the caller cannot ask for and cannot be told it lost.
+export type CompatSurface = 'commands' | 'hooks' | 'plugins' | 'skills' | 'subagents'
 
 /** What `resolveCompatSources` returns: the whole root, or the root narrowed to some surfaces. */
 export type ResolvedCompatSource =
