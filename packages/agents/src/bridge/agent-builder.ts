@@ -26,6 +26,7 @@ import type { ReasoningEffort } from '../types.js'
 
 import { defineAgent, type AgentDefinition, type DefineAgentConfig } from './define-agent.js'
 import type { HookHandlers } from './hook-handlers.js'
+import type { HookApprovalGate } from './sdk-adapter-create-options.js'
 import type { SettingSourcesSelection } from './setting-sources-gate.js'
 
 /**
@@ -244,6 +245,22 @@ export interface AgentBuilder<
    */
   settingSources(selection: SettingSourcesSelection): AgentBuilder<TInput, TModel, TContext, TTools>
   /**
+   * #686 — decide whether a hook declared in a config root is spawned AT ALL, before it runs.
+   *
+   * The fluent twin of `defineAgent({ hookApproval })`. It exists because a consumer that builds
+   * through this chain had no way to reach the gate: `.use()` composes presets rather than sinking
+   * capabilities, and the definition reaches `streamAgentTurnInProcess` with `local` already
+   * assembled, so there was no downstream place to inject it either.
+   *
+   * Distinct from {@link AgentBuilder.hooks} below, which ATTACHES lifecycle hooks. This one decides
+   * whether hooks somebody ELSE declared — in `.theokit/`, or in a foreign dialect imported through
+   * `settingSources` — are allowed to run.
+   *
+   * Requires `@theokit/sdk >= 5.4.0`. Declaring it against an older SDK is refused at assembly
+   * rather than forwarded: a gate that silently does not gate is worse than none.
+   */
+  hookApproval(gate: HookApprovalGate): AgentBuilder<TInput, TModel, TContext, TTools>
+  /**
    * M49 — enable the SDK's durable memory for this agent (`.theokit/memory/` in the run cwd:
    * `Remember:` capture with secret redaction, auto-injected recall, memory tools). Takes the SDK's
    * `MemorySettings` verbatim — `{ enabled: true }` is the minimal opt-in.
@@ -340,6 +357,7 @@ function makeBuilder(config: DefineAgentConfig): AgentBuilder {
     skills: (selection: SkillsSelection) => makeBuilder({ ...config, skills: selection }),
     settingSources: (selection: SettingSourcesSelection) =>
       makeBuilder({ ...config, settingSources: selection }),
+    hookApproval: (gate: HookApprovalGate) => makeBuilder({ ...config, hookApproval: gate }),
     memory: (settings: MemorySettings) => makeBuilder({ ...config, memory: settings }),
     hooks: (map: HookHandlers | Readonly<Record<string, unknown>>) =>
       makeBuilder({ ...config, hooks: map }),
