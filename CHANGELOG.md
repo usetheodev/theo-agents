@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `HookApprovalGate`, `HookApprovalRequest` and `HookGateUnsupportedError` cross `@theokit/agents` alongside the capability that uses them. `13.0.0-next.6` shipped the capability without them, so a consumer could build the gate and neither type it nor catch its refusal. A guard now reads the emitted barrel rather than the source — the omission is invisible in the source every time, which is why this was the fourth instance (#686)
 
+## [@theokit/agents 13.0.0-next.6] - 2026-09-08
+
 ### Added
 
 - `defineAgent({ hookApproval })` carries the SDK's pre-spawn hook approval gate to `Agent.create({ local: { hooks } })`, so a hook declared in a config root — including a foreign dialect imported through `compatSources` — can be refused before it spawns. Declaring it against `@theokit/sdk` older than 5.4.0 is refused rather than forwarded: the option does not exist there, and a gate that silently does not gate is worse than none (#686)
