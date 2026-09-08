@@ -131,6 +131,16 @@ export {
   type AgentModule,
 } from './agent-endpoint.js'
 
+// #686 — the hook gate's vocabulary crosses WITH the capability that takes it. `HookApprovalCapability`
+// was reachable while the type of its argument and the class of its refusal were not, so a consumer
+// could build the gate and neither type it nor catch it. Fourth instance of that shape (#663, #668,
+// #675), and the first with a guard that reads the emitted barrel instead of the source.
+export {
+  HookGateUnsupportedError,
+  type HookApprovalGate,
+  type HookApprovalRequest,
+} from './sdk-adapter-create-options.js'
+
 export {
   delegate,
   DelegationBudgetExceededError,

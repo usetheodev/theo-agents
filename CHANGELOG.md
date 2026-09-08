@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `HookApprovalGate`, `HookApprovalRequest` and `HookGateUnsupportedError` cross `@theokit/agents` alongside the capability that uses them. `13.0.0-next.6` shipped the capability without them, so a consumer could build the gate and neither type it nor catch its refusal. A guard now reads the emitted barrel rather than the source — the omission is invisible in the source every time, which is why this was the fourth instance (#686)
+
 ## [@theokit/agents 13.0.0-next.6] - 2026-09-08
 
 ### Added
