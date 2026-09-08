@@ -19,6 +19,7 @@
     "plugin-hooks-reach-every-route-kind",
     "rate-limited-guard-and-refusals-that-carry-headers",
     "session-secret-guard-refuses-what-people-type",
+    "silence-is-not-a-confirmation",
     "studio-is-no-longer-a-declared-peer",
     "tauri-is-released-because-its-peer-moved",
     "template-pin-admits-the-published-stable",
