@@ -21,6 +21,7 @@ import type { ReasoningEffort } from '../types.js'
 
 import type { CompiledAgentOptions, CompiledTool } from './agent-compiler.js'
 import type { HookHandlers } from './hook-handlers.js'
+import type { HookApprovalGate } from './sdk-adapter-create-options.js'
 import {
   resolveCompatSources,
   resolveSettingSources,
@@ -110,6 +111,14 @@ export interface DefineAgentConfig<TInput extends z.ZodType = z.ZodType> {
    * `Agent.create({ local.settingSources })`.
    */
   settingSources?: SettingSourcesSelection
+  /**
+   * #686 — decide whether a hook declared in a config root is spawned at all, BEFORE it runs.
+   *
+   * Covers any root, including a foreign dialect imported through `settingSources.claudeCode`.
+   * Requires `@theokit/sdk >= 5.4.0`: declaring it against an older SDK is REFUSED at assembly
+   * rather than forwarded, because a gate that silently does not gate is worse than none.
+   */
+  hookApproval?: HookApprovalGate
   /**
    * M49 — durable memory (the SDK's `.theokit/memory/` subsystem: `Remember:` capture, MEMORY.md
    * store, auto-injected `<memory>` block, `memory_search`/`memory_get` tools). The shape is the
@@ -280,6 +289,10 @@ export function compileAgentDefinition(def: AgentDefinition): CompiledAgentOptio
     ...(def.settingSources?.claudeCode !== undefined
       ? { compatSources: resolveCompatSources(def.settingSources) }
       : {}),
+    // #686 — the pre-spawn hook approval gate. Named `hookApproval` and not `hooks`, because
+    // `defineAgent({ hooks })` is already the LIFECYCLE seam: two security-relevant things under one
+    // name is how a consumer configures the wrong one and believes they configured the other.
+    ...(def.hookApproval !== undefined ? { hookApproval: def.hookApproval } : {}),
     // M49 — memory flows to the projection layer; `assembleM8CreateOptions` forwards it to Agent.create.
     ...(def.memory !== undefined ? { memory: def.memory } : {}),
     // Hooks are converted here — the layer EVERY path converges on — rather than on the builder, so

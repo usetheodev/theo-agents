@@ -18,6 +18,7 @@ import {
   RunContextCapability,
   SettingSourcesCapability,
   SkillsResolverCapability,
+  HookApprovalCapability,
   SubAgentsCapability,
 } from '../../src/capability/agent-capabilities.js'
 import {
@@ -68,6 +69,7 @@ const WAIST_FIELDS = [
   'checkpoint',
   'guardrails',
   'skillsResolver',
+  'hookApproval',
 ] as const satisfies readonly WaistField[]
 
 /**
@@ -209,6 +211,10 @@ describe('capability path — waist coverage is complete', () => {
       new CheckpointCapability({ storage: 'memory' } as never),
       new HumanInTheLoopCapability(new Map() as never),
       new SubAgentsCapability({ c: {} } as never),
+      // #686 — the pre-spawn hook approval gate. Present here for the same reason the selection
+      // below declares the foreign dialect: this fixture is "every capability, fully switched on",
+      // and a field only produced when asked for reads as inexpressible when it simply was not.
+      new HookApprovalCapability({ approve: () => true }),
       // Declares the foreign dialect, because this fixture's job is "every capability, fully
       // switched on" — and `compatSources` only exists when it is asked for. An empty selection
       // here would report the field as inexpressible when it simply was not requested.

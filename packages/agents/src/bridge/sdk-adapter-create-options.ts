@@ -10,6 +10,7 @@ import { createRequire } from 'node:module'
 
 import type { ContextSettings, SkillsSettings, SystemPromptResolver } from '@theokit/sdk'
 import type { MemorySettings } from '@theokit/sdk'
+import { TheokitAgentError } from '@theokit/sdk/errors'
 
 import type { McpServersMap } from '../types.js'
 
@@ -24,7 +25,14 @@ interface M8CreateOptions {
   context?: ContextSettings
   systemPrompt?: string | SystemPromptResolver
   /** SDK local options: settings source for SKILL.md discovery (EC-1) + per-run cwd (V4-L.2). */
-  local?: { settingSources?: string[]; compatSources?: string[]; cwd?: string; baseDir?: string }
+  local?: {
+    settingSources?: string[]
+    compatSources?: string[]
+    cwd?: string
+    baseDir?: string
+    /** #686 — the pre-spawn approval gate, forwarded to `Agent.create({ local: { hooks } })`. */
+    hooks?: HookApprovalGate
+  }
   plugins?: readonly unknown[]
   /** #89 — `@MCP` servers forwarded to `Agent.create({ mcpServers })` (the SDK owns execution). */
   mcpServers?: McpServersMap
@@ -37,6 +45,89 @@ interface M8CreateOptions {
  * `@ProjectContext` resolver is built here (it does I/O, so the compiler keeps it raw). `applied`
  * lists which decorators contributed, for the observability log (wiring triad — runtime metric).
  */
+/**
+ * #686 — a consumer's decision point before the SDK spawns a hook, forwarded to
+ * `Agent.create({ local: { hooks } })`.
+ *
+ * Declared here rather than imported: the SDK's `HookApprovalGate` landed in `5.4.0` and this
+ * package's floor is `^4.52.1`, so importing the type would refuse to build on every version below
+ * it. The shape is structural and small, which is the same reasoning `compatSources` already
+ * records — "a string union is declarable here".
+ *
+ * The SDK calls the option `hooks`. On this layer's authoring surface it is `hookApproval`, because
+ * `defineAgent({ hooks })` is already the LIFECYCLE seam and two different security-relevant things
+ * under one name is how a consumer configures the wrong one.
+ */
+export interface HookApprovalGate {
+  readonly approve?: (request: HookApprovalRequest) => boolean | Promise<boolean>
+}
+
+/** What the consumer is shown when asked to approve a hook. Mirrors the SDK's shape (5.4.0). */
+export interface HookApprovalRequest {
+  readonly command: string
+  readonly event: string
+  readonly sourcePath?: string
+  readonly matcher?: string
+}
+
+/** The first `@theokit/sdk` that can honour `local.hooks`. Measured by unpacking the tarballs. */
+const HOOK_GATE_SINCE = { major: 5, minor: 4 } as const
+
+/**
+ * Refuses when the installed SDK cannot honour a declared hook gate.
+ *
+ * ## Why this THROWS where its `compatSources` sibling only warns
+ *
+ * That one guards a configuration source: ignored, the foreign root is not read, and the agent runs
+ * with less than was asked for. This one guards a SECURITY decision. Ignored, the agent runs with
+ * MORE than was asked for — every hook spawns unreviewed — while the consumer believes it is gated
+ * and stops looking. The consumer that reported #686 asked for the refusal in those words: they
+ * would rather have no gate than a silent one, because their `doctor` would otherwise publish a
+ * guarantee that is false on `@theokit/sdk@5.0.0`.
+ *
+ * ## Why an unreadable version is a refusal and not a shrug
+ *
+ * The sibling stays silent when it cannot read the version, and that is right for a diagnostic. Here
+ * "cannot tell" and "is gated" must not collapse: unproven is not proven, and this whole issue is
+ * one instance of that confusion. A bundled SDK that hides `package.json` gets an explicit refusal
+ * naming what it could not read, which is recoverable; a silent pass is not.
+ */
+export class HookGateUnsupportedError extends TheokitAgentError {
+  override readonly name = 'HookGateUnsupportedError'
+  constructor(version: string | undefined) {
+    super(
+      `a hook approval gate was declared, but the installed @theokit/sdk ` +
+        `(${version ?? 'version unreadable'}) cannot honour it: \`local.hooks\` landed in ` +
+        `${String(HOOK_GATE_SINCE.major)}.${String(HOOK_GATE_SINCE.minor)}.0. Forwarding it anyway ` +
+        `would leave every hook spawning unreviewed while the gate reports as installed. Upgrade ` +
+        `@theokit/sdk, or remove \`hookApproval\` and keep whatever refusal you have today ` +
+        `(usetheokit/theokit#686).`,
+      { code: 'hook_gate_unsupported', isRetryable: false },
+    )
+  }
+}
+
+/** Pure so both directions are testable without installing two SDKs. */
+export function assertSdkCanGateHooks(version: string | undefined): void {
+  const [major, minor] = (version ?? '').split('.').map((n) => Number.parseInt(n, 10))
+  const known = Number.isFinite(major) && Number.isFinite(minor)
+  const supported =
+    known &&
+    (major > HOOK_GATE_SINCE.major ||
+      (major === HOOK_GATE_SINCE.major && minor >= HOOK_GATE_SINCE.minor))
+  if (!supported) throw new HookGateUnsupportedError(version)
+}
+
+/** The installed SDK's version, or `undefined` when the subpath does not resolve. */
+function installedSdkVersion(): string | undefined {
+  try {
+    return (createRequire(import.meta.url)('@theokit/sdk/package.json') as { version?: string })
+      .version
+  } catch {
+    return undefined
+  }
+}
+
 /** Reported once per process — a warning repeated per agent stops being read. */
 let sdkCompatWarningEmitted = false
 
@@ -80,7 +171,71 @@ function warnIfSdkCannotReadCompatSources(): void {
   )
 }
 
-export function assembleM8CreateOptions(compiled: CompiledAgentOptions): {
+/**
+ * Project the two config-root fields onto `options.local`.
+ *
+ * ## M68 — `settingSources` is a projection, not a decision
+ *
+ * `CompiledAgentOptions.settingSources` can only hold roots some posture authorized, because every
+ * authoring path runs the selection through `resolveSettingSources` (the gate) at compile time.
+ *
+ * Two things died here, and both were the defect. A LOCAL function named `resolveSettingSources` —
+ * same name as the gate, consulting no posture — is what this used to call, so a grep for the gate
+ * landed on a homonym and the gate looked wired. And that homonym injected `['project']` whenever
+ * the agent declared inline skills, "for back-compat": declaring a skill is a statement about
+ * prompts, and it was silently enabling shell execution from the working directory.
+ *
+ * ## #634 — both spread, neither replaces
+ *
+ * The second write eating the first is the ordinary way this breaks: invisibly, with each option
+ * passing its own test. `applyHookApproval` writes to the same object and follows the same rule.
+ *
+ * Extracted together because they are one concern and because keeping them inline put the assembler
+ * over the complexity ceiling once the hook gate joined it (#686).
+ */
+function applyLocalSources(
+  compiled: CompiledAgentOptions,
+  options: M8CreateOptions,
+  applied: string[],
+): void {
+  if (compiled.settingSources !== undefined && compiled.settingSources.length > 0) {
+    options.local = { ...options.local, settingSources: [...compiled.settingSources] }
+    applied.push('settingSources')
+  }
+  if (compiled.compatSources !== undefined && compiled.compatSources.length > 0) {
+    options.local = { ...options.local, compatSources: [...compiled.compatSources] }
+    applied.push('compatSources')
+    warnIfSdkCannotReadCompatSources()
+  }
+}
+
+/**
+ * #686 — forward the pre-spawn approval gate, or refuse.
+ *
+ * Checked ONLY when one was declared: an agent that asks for no gate must not be refused over an
+ * SDK feature it never needed. The check comes BEFORE the forward, so an unsupported SDK never
+ * leaves a caller holding options that read as gated.
+ *
+ * Extracted because it pushed `assembleM8CreateOptions` past the complexity ceiling, and a security
+ * decision is the last place to spend a suppression.
+ */
+function applyHookApproval(
+  compiled: CompiledAgentOptions,
+  options: M8CreateOptions,
+  applied: string[],
+  sdkVersion: string | undefined,
+): void {
+  if (compiled.hookApproval === undefined) return
+  assertSdkCanGateHooks(sdkVersion ?? installedSdkVersion())
+  options.local = { ...options.local, hooks: compiled.hookApproval }
+  applied.push('hookApproval')
+}
+
+export function assembleM8CreateOptions(
+  compiled: CompiledAgentOptions,
+  /** Injectable for tests; production reads the installed SDK (#686). */
+  deps: { readonly sdkVersion?: string } = {},
+): {
   options: M8CreateOptions
   applied: string[]
 } {
@@ -101,27 +256,8 @@ export function assembleM8CreateOptions(compiled: CompiledAgentOptions): {
     options.plugins = compiled.plugins
     applied.push('plugins')
   }
-  // M68 — already resolved. `CompiledAgentOptions.settingSources` can only hold roots some posture
-  // authorized, because every authoring path runs the selection through `resolveSettingSources`
-  // (the gate) at compile time. This is a projection, not a decision.
-  //
-  // Two things died here, and both were the defect. A LOCAL function named `resolveSettingSources`
-  // — same name as the gate, consulting no posture — is what this line used to call, so a grep for
-  // the gate landed on a homonym and the gate looked wired. And that homonym injected `['project']`
-  // whenever the agent declared inline skills, "for back-compat": declaring a skill is a statement
-  // about prompts, and it was silently enabling shell execution from the working directory.
-  if (compiled.settingSources !== undefined && compiled.settingSources.length > 0) {
-    options.local = { ...options.local, settingSources: [...compiled.settingSources] }
-    applied.push('settingSources')
-  }
-  // #634 — spread over `options.local` rather than replacing it, because `settingSources` above
-  // projects onto the same object and the second write eating the first is the ordinary way this
-  // breaks: invisibly, with each option passing its own test.
-  if (compiled.compatSources !== undefined && compiled.compatSources.length > 0) {
-    options.local = { ...options.local, compatSources: [...compiled.compatSources] }
-    applied.push('compatSources')
-    warnIfSdkCannotReadCompatSources()
-  }
+  applyLocalSources(compiled, options, applied)
+  applyHookApproval(compiled, options, applied, deps.sdkVersion)
   if (compiled.context) {
     options.context = compiled.context
     applied.push('context')

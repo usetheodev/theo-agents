@@ -163,6 +163,15 @@ export class SettingSourcesCapability implements Capability {
     }
   }
 }
+/**
+ * #686 — the pre-spawn hook approval gate. A capability so the two compile paths agree: the waist
+ * distinguishes "not declared" from "declared", and a field only `defineAgent` could set would make
+ * anyone building through capabilities silently ungated.
+ */
+export class HookApprovalCapability extends FieldCapability<'hookApproval'> {
+  readonly name = 'hook-approval'
+  protected readonly field = 'hookApproval' as const
+}
 export class PluginsCapability extends FieldCapability<'plugins'> {
   readonly name = 'plugins'
   protected readonly field = 'plugins' as const
