@@ -18,6 +18,11 @@ export {
   SessionRegistryRemoverError,
   type DeleteSessionOptions,
   type DeleteSessionResult,
+  // Crosses WITH `DeleteSessionResult`, because a consumer that can read `registryOutcome` and
+  // cannot NAME its type writes `string` and loses every distinction the union exists to make.
+  // Third instance of this omission (`AgentModule` in #663, `transcriptOf` in #668), and the third
+  // found by consuming the PUBLISHED package rather than by reading the source (#675).
+  type RegistryOutcome,
   type SessionSummary,
 } from './session-lifecycle.js'
 

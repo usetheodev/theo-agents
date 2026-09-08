@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `RegistryOutcome` crosses `@theokit/agents/session` alongside the `registryOutcome` field it types. It shipped in `13.0.0-next.4` without it, so a consumer could read the value and not name it — the third time a type has been withheld from the function that returns it, and the third caught by installing the published package rather than by reading the source (#675)
+
 ### Removed
 
 - The root `package.json`'s `peerDependencies` on `@theokit/sdk`. The root is `private: true`, so nobody installs it and nothing packs it — the field reached no consumer and constrained no resolution. It declared `^4.49.0` while every published package had already widened to admit 5.x, and a sibling repository read it as evidence about what this project's consumers receive
