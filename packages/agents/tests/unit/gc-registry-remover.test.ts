@@ -73,7 +73,10 @@ describe('deleteSession — the registry seam accepts what the ecosystem actuall
       },
     })
     expect(calls).toEqual(['s1'])
-    expect(result.registryRemoved, 'an awaited removal is a completed removal').toBe(true)
+    // This is THE shape the issue is about: `Agent.delete(id): Promise<void>` resolves saying
+    // nothing, and below `@theokit/sdk@5.3.1` it resolves having removed nothing. Awaiting proves
+    // it finished; it cannot prove what it did (#675).
+    expect(result.registryOutcome, 'silence is not a confirmation').toBe('unconfirmed')
   })
 
   it('test_sync_remover_still_works', async () => {
@@ -84,7 +87,7 @@ describe('deleteSession — the registry seam accepts what the ecosystem actuall
       force: true,
       removeFromRegistry: () => true,
     })
-    expect(result.registryRemoved).toBe(true)
+    expect(result.registryOutcome).toBe('removed')
     expect(result.transcriptRemoved).toBe(true)
   })
 
@@ -100,7 +103,7 @@ describe('deleteSession — the registry seam accepts what the ecosystem actuall
         throw new Error('registry unavailable')
       },
     })
-    expect(result.registryRemoved).toBe(false)
+    expect(result.registryOutcome).not.toBe('removed')
     expect(result.registryError, 'the failure is reported, not swallowed').toBeDefined()
     expect(
       existsSync(transcript),
@@ -122,7 +125,7 @@ describe('deleteSession — the registry seam accepts what the ecosystem actuall
       },
     })
     // Two distinct fields. One collapsed boolean is how the original silent success hid.
-    expect(result.registryRemoved).toBe(false)
+    expect(result.registryOutcome).not.toBe('removed')
     expect(result.transcriptRemoved).toBe(false)
     expect(String(result.registryError)).toContain('rejected')
   })
@@ -136,7 +139,7 @@ describe('deleteSession — the registry seam accepts what the ecosystem actuall
       registryTimeoutMs: 25,
       removeFromRegistry: () => new Promise<void>(() => {}), // never settles
     })
-    expect(result.registryRemoved).toBe(false)
+    expect(result.registryOutcome).not.toBe('removed')
     expect(String(result.registryError)).toMatch(/timed out|timeout/i)
   })
 
@@ -155,18 +158,18 @@ describe('deleteSession — the registry seam accepts what the ecosystem actuall
           settle = resolve
         }),
     })
-    expect(result.registryRemoved).toBe(false)
+    expect(result.registryOutcome).not.toBe('removed')
     settle()
     await new Promise((r) => setTimeout(r, 40))
-    expect(result.registryRemoved, 'a settled-too-late remover must not rewrite history').toBe(
-      false,
+    expect(result.registryOutcome, 'a settled-too-late remover must not rewrite history').not.toBe(
+      'removed',
     )
   })
 
   it('test_no_remover_supplied_still_deletes_the_transcript', async () => {
     const { cwd, root } = seedSession('s7')
     const result = await deleteSession('s7', { cwd, root, force: true })
-    expect(result.registryRemoved).toBe(false)
+    expect(result.registryOutcome).not.toBe('removed')
     expect(result.transcriptRemoved).toBe(true)
   })
 })

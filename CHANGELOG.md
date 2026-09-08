@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `deleteSession` no longer reports a registry removal it cannot confirm. `registryRemoved` was true whenever the injected remover did not explicitly return `false` — including when it resolved saying nothing, which is the shape `Agent.delete` has and, below `@theokit/sdk@5.3.1`, is what a no-op returns. The field is replaced by `registryOutcome`, which distinguishes a reported removal from silence and from a remover that was never supplied (#675)
+
 ### Changed
 
 - `CONTRIBUTING.md` describes how releases actually work. It said the release engineer runs `npm publish`, which stopped being true when publishing moved to trusted publishing over OIDC, and it did not mention the one manual step a release cannot finish without — opening the Version Packages PR from the branch CI pushes, announced only in the run's annotations. Both gaps cost two hand-found releases and one issue filed against a design that was working as intended (#673)

@@ -44,7 +44,7 @@ export { SessionRegistryRemoverError }
  *
  * `Agent.delete` clears the REGISTRY ENTRY and never touches the transcript on disk. A consumer had
  * to discover that by measuring. {@link deleteSession} is the answer: it returns
- * `{ registryRemoved, transcriptRemoved }` so the two are impossible to confuse, and a caller that
+ * `{ registryOutcome, transcriptRemoved }` so the two are impossible to confuse, and a caller that
  * wanted both and got one can see it.
  */
 
@@ -63,24 +63,36 @@ export class SessionInUseError extends TheokitAgentError {
     /** Why it is protected — a writer lease, the resumable pointer, or being the most recent. */
     readonly reason: string,
     /**
-     * Whether the registry half already happened before the refusal.
+     * What the registry half reported before the refusal, or `undefined` when it never ran.
      *
-     * `true` only when the session became protected DURING the registry removal — the re-check
-     * fires after the await, so the entry is already gone while the transcript stays. The caller
-     * needs this: retrying a removal that is already done returns `false` ("no entry to remove"),
-     * which reads as a failure and is not one.
+     * Set only when the session became protected DURING the registry removal — the re-check fires
+     * after the await, so that half has already been attempted while the transcript stays. The
+     * caller needs it: retrying a removal that is already done reports "nothing to remove", which
+     * reads as a failure and is not one.
+     *
+     * Carries the OUTCOME rather than a boolean since #675. `unconfirmed` must not be advertised as
+     * "already removed" — that is the assertion the issue is about, and telling a caller not to
+     * retry a half that may never have happened is the expensive direction to be wrong in.
      */
-    readonly registryRemoved = false,
+    readonly registryOutcome?: RegistryOutcome,
   ) {
     super(
       `session "${sessionId}" is protected (${reason}). Deleting it would discard state something ` +
         `is still using. Stop the run, or pass { force: true } to delete anyway.` +
-        (registryRemoved
-          ? ` The registry entry was already removed before this was noticed — do not retry that ` +
-            `half, only the transcript.`
-          : ''),
+        registryNote(registryOutcome),
     )
   }
+}
+
+/** The sentence the refusal adds about a registry half that already ran. Silent when it did not. */
+function registryNote(outcome: RegistryOutcome | undefined): string {
+  if (outcome === 'removed') {
+    return ` The registry entry was already removed before this was noticed — do not retry that half, only the transcript.`
+  }
+  if (outcome === 'unconfirmed') {
+    return ` The registry removal was already attempted and reported nothing, so whether the entry is gone is unknown — verify it before retrying.`
+  }
+  return ''
 }
 
 /** One session as the lifecycle vocabulary sees it. */
@@ -270,17 +282,60 @@ function readPointer(cwd: string, root: string): string | undefined {
 }
 
 /** What `deleteSession` did, per store. */
+/**
+ * What the injected registry remover actually told us — REPLACES the `registryRemoved` boolean
+ * (usetheokit/theokit#675).
+ *
+ * There are three outcomes and a boolean could carry two, so the third was folded into `true`:
+ *
+ * - `removed`            the remover reported that it removed an entry
+ * - `nothing-to-remove`  the remover reported that there was none — a report, and an ordinary one
+ * - `unconfirmed`        the remover ran, resolved, and said NOTHING
+ * - `failed`             it threw or timed out; see `registryError`
+ * - `not-attempted`      no remover was supplied, so the registry was never touched
+ *
+ * `not-attempted` and `unconfirmed` are deliberately not the same value. "Nobody asked" and "we
+ * asked and got silence" lead a caller to opposite actions, and the old boolean said `false` to
+ * both.
+ *
+ * `unconfirmed` is the one that matters, and it is the common case rather than an exotic one.
+ * `Agent.delete` returns `Promise<void>`: measured in `@theokit/sdk@4.52.1` and confirmed by the
+ * SDK's changelog for `5.3.1`, it mutates an in-memory map and — unlike `Agent.list` — never
+ * hydrates from disk, so in any freshly started process it resolves having removed nothing and
+ * throws nothing. Reporting that as a removal was this package asserting something no version below
+ * 5.3.1 gives it any way to know.
+ *
+ * `5.3.1` fixes the BEHAVIOUR and not the signature: `Agent.delete` still returns `Promise<void>`,
+ * so `unconfirmed` stays the honest answer on every version this package admits. Raising the floor
+ * would make the removal actually happen; it would not make it reportable, which is why the two are
+ * separate decisions.
+ *
+ * A caller that needs certainty verifies from its own side; this package deliberately does not own
+ * the registry (see `gc/registry-remover.ts`). `Agent.list` hydrates from disk — which `delete`
+ * never does, and that asymmetry IS the upstream defect — so it is the read that can answer.
+ */
+export type RegistryOutcome =
+  | 'removed'
+  | 'nothing-to-remove'
+  | 'unconfirmed'
+  | 'failed'
+  | 'not-attempted'
+
 export interface DeleteSessionResult {
-  /** Whether a registry entry was removed. */
-  readonly registryRemoved: boolean
+  /**
+   * What the registry remover reported. RENAMED from `registryRemoved` by #675: the meaning
+   * changed, and a boolean under the old name would have kept `if (result.registryRemoved)`
+   * compiling while silently flipping which branch it took.
+   */
+  readonly registryOutcome: RegistryOutcome
   /** Whether the transcript file was removed. */
   readonly transcriptRemoved: boolean
   /**
    * Why the registry removal failed, when it did.
    *
-   * Kept SEPARATE from `registryRemoved` on purpose: collapsing the two outcomes into one boolean is
-   * exactly how the original silent success hid. A caller that only checks `registryRemoved` sees
-   * `false` and can still surface the reason.
+   * Kept SEPARATE from `registryOutcome` on purpose: collapsing the outcomes into one value is
+   * exactly how the original silent success hid. A caller that only reads the outcome sees
+   * `failed` and can still surface the reason.
    */
   readonly registryError?: unknown
 }
@@ -348,7 +403,9 @@ export async function deleteSession(
   // nothing repairs it — GC works FROM transcripts, so it never sees the orphan entry again. The
   // reverse leaves an orphan FILE, which the next sweep collects. One failure mode is recoverable
   // and the other is not, so this is not a preference.
-  let registryRemoved = false
+  // Starts at the honest default: with no remover supplied, the registry is never touched. Every
+  // other value requires a remover to have RUN (usetheokit/theokit#675).
+  let registryOutcome: RegistryOutcome = 'not-attempted'
   let registryError: unknown
   if (options.removeFromRegistry !== undefined) {
     try {
@@ -360,13 +417,17 @@ export async function deleteSession(
         sessionId,
         options.registryTimeoutMs,
       )
-      // `false` means "no entry to remove" — an ordinary outcome, not a failure. `void` (the shape
-      // `Agent.delete` has) means it completed.
-      registryRemoved = outcome !== false
+      // Three answers, and the third is silence. `false` is a REPORT that there was nothing —
+      // ordinary, not a failure. Anything else truthy is a report that something went. `undefined`
+      // is the shape `Agent.delete` has, and it says nothing at all: below `@theokit/sdk@5.3.1` it
+      // is what a no-op returns, so folding it into "removed" asserted a fact nobody had (#675).
+      if (outcome === false) registryOutcome = 'nothing-to-remove'
+      else if (outcome === undefined) registryOutcome = 'unconfirmed'
+      else registryOutcome = 'removed'
     } catch (error) {
       // The transcript is untouched, so the caller can retry after fixing the registry. Deleting it
       // here would trade a retryable state for an unrepairable one.
-      return { registryRemoved: false, transcriptRemoved: false, registryError: error }
+      return { registryOutcome: 'failed', transcriptRemoved: false, registryError: error }
     }
   }
 
@@ -383,13 +444,13 @@ export async function deleteSession(
   //
   // Refusing here leaves the registry entry gone and the file present — an orphan FILE, which is the
   // recoverable direction this function already chose in the ordering comment above, and the reason
-  // the error carries `registryRemoved`.
+  // the error carries `registryOutcome`.
   if (options.force !== true) {
     const nowProtected = protectedTranscriptPaths(options.cwd, root).get(
       transcriptOf(sessionId, options.cwd, root),
     )
     if (nowProtected !== undefined) {
-      throw new SessionInUseError(sessionId, nowProtected, registryRemoved)
+      throw new SessionInUseError(sessionId, nowProtected, registryOutcome)
     }
   }
 
@@ -401,7 +462,7 @@ export async function deleteSession(
     // Absent is the desired end state, so a missing file is not a failure — it is just `false`.
   }
 
-  return { registryRemoved, transcriptRemoved, registryError }
+  return { registryOutcome, transcriptRemoved, registryError }
 }
 
 /**
