@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `RegistryOutcome` crosses `@theokit/agents/session` alongside the `registryOutcome` field it types. It shipped in `13.0.0-next.4` without it, so a consumer could read the value and not name it — the third time a type has been withheld from the function that returns it, and the third caught by installing the published package rather than by reading the source (#675)
+
 ## [@theokit/agents 13.0.0-next.4] - 2026-09-08
 
 ### Changed
