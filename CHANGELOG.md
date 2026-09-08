@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `AgentBuilder.create().hookApproval(gate)` — the fluent twin of `defineAgent({ hookApproval })`. The gate shipped in `13.0.0-next.7` reachable through one authoring door and not the other, and a consumer that builds with the fluent chain had no way to reach it at all. A guard now builds the same agent through both doors and asserts they arrive at the same compiled waist (#686)
+
 ### Fixed
 
 - `HookApprovalGate`, `HookApprovalRequest` and `HookGateUnsupportedError` cross `@theokit/agents` alongside the capability that uses them. `13.0.0-next.6` shipped the capability without them, so a consumer could build the gate and neither type it nor catch its refusal. A guard now reads the emitted barrel rather than the source — the omission is invisible in the source every time, which is why this was the fourth instance (#686)
