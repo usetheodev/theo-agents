@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `defineAgent({ hookApproval })` carries the SDK's pre-spawn hook approval gate to `Agent.create({ local: { hooks } })`, so a hook declared in a config root — including a foreign dialect imported through `compatSources` — can be refused before it spawns. Declaring it against `@theokit/sdk` older than 5.4.0 is refused rather than forwarded: the option does not exist there, and a gate that silently does not gate is worse than none (#686)
 
+## [@theokit/agents 13.0.0-next.5] - 2026-09-08
+
 ### Fixed
 
 - `RegistryOutcome` crosses `@theokit/agents/session` alongside the `registryOutcome` field it types. It shipped in `13.0.0-next.4` without it, so a consumer could read the value and not name it — the third time a type has been withheld from the function that returns it, and the third caught by installing the published package rather than by reading the source (#675)
