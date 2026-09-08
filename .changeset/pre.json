@@ -12,6 +12,7 @@
   },
   "changesets": [
     "a-foreign-root-can-be-imported-in-part",
+    "a-narrowed-root-can-name-commands",
     "agents-move-inside-the-server",
     "an-unreadable-transcript-is-never-identified",
     "both-authoring-doors-reach-the-gate",
