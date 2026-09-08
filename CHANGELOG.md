@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Removed
+
+- The root `package.json`'s `peerDependencies` on `@theokit/sdk`. The root is `private: true`, so nobody installs it and nothing packs it — the field reached no consumer and constrained no resolution. It declared `^4.49.0` while every published package had already widened to admit 5.x, and a sibling repository read it as evidence about what this project's consumers receive
+
+### Fixed
+
+- `deleteSession` no longer reports a registry removal it cannot confirm. `registryRemoved` was true whenever the injected remover did not explicitly return `false` — including when it resolved saying nothing, which is the shape `Agent.delete` has and, below `@theokit/sdk@5.3.1`, is what a no-op returns. The field is replaced by `registryOutcome`, which distinguishes a reported removal from silence and from a remover that was never supplied (#675)
+
+### Changed
+
+- `CONTRIBUTING.md` describes how releases actually work. It said the release engineer runs `npm publish`, which stopped being true when publishing moved to trusted publishing over OIDC, and it did not mention the one manual step a release cannot finish without — opening the Version Packages PR from the branch CI pushes, announced only in the run's annotations. Both gaps cost two hand-found releases and one issue filed against a design that was working as intended (#673)
+
 ## [@theokit/agents 13.0.0-next.3, theokit 0.65.0-next.4] - 2026-09-07
 
 ### Fixed

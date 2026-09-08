@@ -107,7 +107,7 @@ describe('deleteSession — the two stores are reported separately', () => {
     await persistSessionId(CWD, 'keeper', root)
 
     const result = await deleteSession('doomed', { cwd: CWD, root, removeFromRegistry: () => true })
-    expect(result).toEqual({ registryRemoved: true, transcriptRemoved: true })
+    expect(result).toEqual({ registryOutcome: 'removed', transcriptRemoved: true })
     expect(existsSync(transcriptPath(root, CWD, 'doomed'))).toBe(false)
   })
 
@@ -136,20 +136,38 @@ describe('deleteSession — the two stores are reported separately', () => {
       },
     })
 
-    expect(result.registryRemoved, 'an awaited removal is a completed removal').toBe(true)
+    // CHANGED by usetheokit/theokit#675, and worth saying why rather than quietly editing it.
+    //
+    // This asserted `registryRemoved === true` under the reasoning "an awaited removal is a
+    // completed removal", and that reasoning is the defect. The remover above is a void async
+    // function: it resolves saying NOTHING. Awaiting fixed the earlier bug — a Promise read as
+    // truthy before it settled — but completion is not confirmation, and the two were conflated.
+    //
+    // That distinction is not academic here: this is the exact shape `Agent.delete` has, and below
+    // `@theokit/sdk@5.3.1` it resolves `void` having left `registry.json` untouched.
+    expect(result.registryOutcome, 'a remover that says nothing has confirmed nothing').toBe(
+      'unconfirmed',
+    )
     expect(result.transcriptRemoved).toBe(true)
     expect(existsSync(transcriptPath(root, CWD, 'doomed'))).toBe(false)
   })
 
   it('test_without_a_registry_remover_only_the_transcript_goes', async () => {
-    // And it SAYS so. The registry is the runtime's, injected — a caller that forgot to pass the
-    // remover gets `registryRemoved: false`, not a silent half-delete it believes was whole.
+    // And it SAYS so, distinctly (#675). `not-attempted` is not the "caller forgot" case it might
+    // look like — it is the DELIBERATE path of the only real consumer this function has today.
+    //
+    // Measured in TheoCode on 2026-09-08: it calls `Agent.delete` itself, then invokes this function
+    // WITHOUT `removeFromRegistry`, because it wants only the transcript half. The old boolean told
+    // it `false`, which reads as "we tried and failed" when nobody tried — and the same consumer had
+    // already stopped reading the field for exactly that reason.
+    //
+    // So the third value earns its place: `unconfirmed` would claim a remover ran and stayed quiet.
     writeTranscriptFile('doomed', 60)
     writeTranscriptFile('keeper', 0)
     await persistSessionId(CWD, 'keeper', root)
 
     expect(await deleteSession('doomed', { cwd: CWD, root })).toEqual({
-      registryRemoved: false,
+      registryOutcome: 'not-attempted',
       transcriptRemoved: true,
     })
   })
@@ -382,7 +400,10 @@ describe('deleteSession — a snapshot taken before an await is not a fact after
       caught = error
     }
     expect(caught).toBeInstanceOf(SessionInUseError)
-    expect((caught as SessionInUseError).registryRemoved).toBe(true)
+    // This remover RETURNS `true`, so the refusal may make the strong claim (#675). A remover that
+    // said nothing would carry 'unconfirmed' instead, and the message tells the caller to verify
+    // rather than to skip the retry.
+    expect((caught as SessionInUseError).registryOutcome).toBe('removed')
     lease?.release()
   })
 
