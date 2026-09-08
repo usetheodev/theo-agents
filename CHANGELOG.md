@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [@theokit/agents 13.0.0-next.8] - 2026-09-08
+
 ### Added
 
 - `settingSources.claudeCode.import` names WHICH surfaces of a foreign configuration root to take — `hooks`, `plugins`, `skills`, `subagents`. Absent still means all of them; an empty list is refused rather than guessed, because "none" and "unset, so all" differ by whether `.claude/hooks.json` executes shell (#686)
