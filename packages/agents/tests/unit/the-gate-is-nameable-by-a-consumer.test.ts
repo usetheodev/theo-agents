@@ -28,6 +28,11 @@ const THE_GATE_NEEDS = [
   'HookApprovalGate', // type the object it takes
   'HookApprovalRequest', // type the callback's argument
   'HookGateUnsupportedError', // catch the refusal by class rather than by message
+  // #686, second half — a consumer that narrows a foreign root needs to name the surfaces and the
+  // shape `resolveCompatSources` returns. The list grows with every public type, which is the point:
+  // adding one here is the cheapest moment to notice the barrel does not carry it.
+  'CompatSurface',
+  'ResolvedCompatSource',
 ] as const
 
 describe('the hook gate is nameable by a consumer (theokit#686)', () => {

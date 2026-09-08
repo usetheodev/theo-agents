@@ -18,6 +18,7 @@ import type { CompiledAgentOptions } from './agent-compiler.js'
 import type { StreamEvent } from './agent-sse-handler.js'
 import type { AgentStopReason, DoneEvent } from './agent-stream-events.js'
 import { compileProjectContext } from './compile-project-context.js'
+import type { ResolvedCompatSource } from './setting-sources-gate.js'
 
 /** Extra `Agent.create()` options compiled from the M8 declarative decorators. */
 interface M8CreateOptions {
@@ -27,7 +28,7 @@ interface M8CreateOptions {
   /** SDK local options: settings source for SKILL.md discovery (EC-1) + per-run cwd (V4-L.2). */
   local?: {
     settingSources?: string[]
-    compatSources?: string[]
+    compatSources?: ResolvedCompatSource[]
     cwd?: string
     baseDir?: string
     /** #686 — the pre-spawn approval gate, forwarded to `Agent.create({ local: { hooks } })`. */
