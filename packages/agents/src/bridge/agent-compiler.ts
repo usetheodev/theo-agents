@@ -29,6 +29,8 @@ import type {
   ToolOptions,
 } from '../types.js'
 
+import type { HookApprovalGate } from './sdk-adapter-create-options.js'
+
 /**
  * M53 — the input shape `compileTools`/`compileHitlGates` consume, declared WITH them now that the
  * metadata walk that used to own it is gone. `ToolboxCapability` builds this from a class'
@@ -274,6 +276,14 @@ export interface CompiledAgentOptions {
    * can only hold a source some posture granted, so the adapter projects rather than decides.
    */
   compatSources?: readonly string[]
+  /**
+   * #686 — the consumer's pre-spawn approval gate, forwarded to `Agent.create({ local: { hooks } })`.
+   *
+   * Distinct from `hitl` (which gates TOOLS at run time) and from the lifecycle `plugins` below
+   * (which react to events). This one decides whether a hook declared in a config root — including
+   * a foreign dialect imported through `compatSources` — is spawned at all.
+   */
+  hookApproval?: HookApprovalGate
   /** Code `Plugin` objects forwarded to `Agent.create({ plugins })` (lifecycle-hook seam). */
   plugins?: readonly unknown[]
   tools: CompiledTool[]
