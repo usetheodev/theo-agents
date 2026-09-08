@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [@theokit/agents 13.0.0-next.8] - 2026-09-08
+
 ### Added
 
 - `AgentBuilder.create().hookApproval(gate)` — the fluent twin of `defineAgent({ hookApproval })`. The gate shipped in `13.0.0-next.7` reachable through one authoring door and not the other, and a consumer that builds with the fluent chain had no way to reach it at all. A guard now builds the same agent through both doors and asserts they arrive at the same compiled waist (#686)
