@@ -153,9 +153,15 @@ describe('deleteSession — the two stores are reported separately', () => {
   })
 
   it('test_without_a_registry_remover_only_the_transcript_goes', async () => {
-    // And it SAYS so, distinctly. The registry is the runtime's, injected — a caller that forgot
-    // to pass the remover gets `not-attempted`, not a silent half-delete it believes was whole and
-    // not `unconfirmed`, which would claim a remover ran and stayed quiet (#675).
+    // And it SAYS so, distinctly (#675). `not-attempted` is not the "caller forgot" case it might
+    // look like — it is the DELIBERATE path of the only real consumer this function has today.
+    //
+    // Measured in TheoCode on 2026-09-08: it calls `Agent.delete` itself, then invokes this function
+    // WITHOUT `removeFromRegistry`, because it wants only the transcript half. The old boolean told
+    // it `false`, which reads as "we tried and failed" when nobody tried — and the same consumer had
+    // already stopped reading the field for exactly that reason.
+    //
+    // So the third value earns its place: `unconfirmed` would claim a remover ran and stayed quiet.
     writeTranscriptFile('doomed', 60)
     writeTranscriptFile('keeper', 0)
     await persistSessionId(CWD, 'keeper', root)
