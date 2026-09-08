@@ -124,6 +124,13 @@ export interface SettingSourcesSelection {
  * that cannot build against its own minimum dependency is worse than a constant that has been
  * checked. Verified against the published 5.4.0 `.d.ts`, where the union is
  * `"hooks" | "plugins" | "skills" | "subagents"` — note `subagents`, not `agents`.
+ *
+ * The two unions therefore DIVERGE by one name, on purpose: the SDK has four, and `commands` is
+ * this layer's, because `<projectDir>/.claude/commands/*.md` is read here and never by the SDK.
+ * A caller who builds SDK `local` options directly cannot pass a value of this type — `TS2345`,
+ * with a compiler message that names the mismatch and not the reason. Derive the SDK's list from
+ * this one minus `commands` rather than writing four names beside five; a hand-copied list goes
+ * stale the day a surface is added, which is the divergence #704 existed to remove.
  */
 // `commands` is loaded by THIS package rather than by the SDK, and was missing here until #704.
 // An enumeration used to NARROW a root must cover every surface that root feeds: a name absent
