@@ -38,7 +38,14 @@ jobs:
   # `changeset pre exit`, with the publish reporting success.
   release-channel:
     name: release channel
-    runs-on: ubuntu-latest
+    # Named, not `ubuntu-latest`, because this file publishes. A runner label is a moving
+    # reference in the same sense as an action tag: `ubuntu-latest` moved 22.04 -> 24.04 under
+    # every repository that used it, and the builds that broke were the ones depending on a
+    # toolchain version they never named. Read from a real run rather than assumed -- the job log
+    # of run 34288858470 reports `Image: ubuntu-24.04`, so this is a no-op today and a bound on
+    # the next migration. It does NOT make the build reproducible: the image behind `24.04` is
+    # rebuilt weekly. It bounds the change to a patch level.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -51,7 +58,9 @@ jobs:
   release:
     name: Publish release
     needs: release-channel
-    runs-on: ubuntu-latest
+    # Named for the reason given on `release-channel` above: this job builds and publishes the
+    # artifact consumers install.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write # Commit the version bump and create the git tag.
