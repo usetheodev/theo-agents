@@ -10,7 +10,21 @@ on:
   pull_request_review:
     types: [submitted]
 
+# Serialized per thread, NOT cancelled. Two `@claude` mentions on the same pull request are two
+# requests somebody made, so cancelling the first discards work that was asked for — the argument
+# `cancel-in-progress: true` wins on a CI leg does not transfer to a bot. What this DOES prevent is
+# two runs acting on one pull request at the same time, which is the hazard: both read the same head,
+# both act, and the second silently overwrites the first's conclusion.
+#
+# The key falls back across triggers because the four events put the number in different places:
+# `issue_comment` (including on a PR) carries `issue.number`; the two review events carry
+# `pull_request.number`. Without the fallback every review event would share one group.
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
 permissions:
+  # Floor for the whole file; the job below widens it for itself and nothing else inherits.
   contents: read
 
 jobs:
@@ -23,10 +37,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-      id-token: write
+      contents: read # Read the checked-out tree; this job never pushes.
+      pull-requests: read # Read PR bodies and review comments that mention @claude.
+      issues: read # Same, for the `issues` and `issue_comment` triggers.
+      id-token: write # OIDC only — this mints a short-lived identity token, not a write scope.
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository

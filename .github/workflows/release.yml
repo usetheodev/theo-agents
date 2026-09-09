@@ -10,7 +10,17 @@ on:
     branches: [main]
   workflow_dispatch:
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+# Written in map form only to state the second line. The scalar form defaults to
+# `cancel-in-progress: false`, which is already what a release needs — but the default is silent,
+# and a linter that cannot tell "chose false" from "never considered it" flags it on every audit.
+#
+# `false` is the whole point here, and it is the opposite of the CI legs. Cancelling a superseded
+# CI run discards a verdict nobody will read. Cancelling a superseded RELEASE run discards a
+# half-finished publish: versions bumped and committed but not published, or published to npm
+# with no tag and no GitHub release. There is no run to supersede this one that is worth that.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 # tsup builds DTS for theokit's ~24 entrypoints in a worker; the runner's default
 # heap OOMs it (ERR_WORKER_OUT_OF_MEMORY). Raise the heap workflow-wide so the
@@ -43,9 +53,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
+      contents: write # Commit the version bump and create the git tag.
+      pull-requests: write # Open and update the "Version Packages" pull request.
+      id-token: write # OIDC for npm trusted publishing — this is what replaces NPM_TOKEN.
     steps:
       # Actions pinned by commit SHA rather than by ref, because this job publishes as this
       # organization and a moving ref decides what runs here. `changesets/action@v1` was the

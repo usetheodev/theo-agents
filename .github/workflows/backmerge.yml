@@ -17,13 +17,17 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# `contents: read` and nothing else. The back-merge job below declares the `pull-requests: write`
+# it needs on itself (and a `uses:` job only ever receives what the caller grants it explicitly),
+# so granting write HERE widened the default for every job the file might later gain without
+# widening anything the job it has can do. Narrowing it changes no behaviour today; it stops the
+# next job added to this file from silently inheriting a write token nobody chose to give it.
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   backmerge:
     uses: usetheokit/shared-workflows/.github/workflows/backmerge.yml@v1 # zizmor: ignore[unpinned-uses]
     permissions:
-      contents: read
-      pull-requests: write
+      contents: read # Read both branches to compute the back-merge.
+      pull-requests: write # Open the back-merge pull request. The only write, per the note above.

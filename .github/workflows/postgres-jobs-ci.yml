@@ -39,7 +39,16 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15-alpine
+        # Pinned by digest, for the same reason every action here is pinned by SHA: `15-alpine` is
+        # a MOVING tag. Postgres rebuilds it on every patch and every Alpine base bump, so the
+        # database this suite runs against can change with no commit in this repository. That is
+        # the failure mode this job exists to rule out — it asserts SKIP LOCKED race-safety, and a
+        # silent minor-version change underneath it turns a real regression into "flaky CI".
+        #
+        # Resolved from the registry on 2026-09-09, not copied from memory. To move it:
+        #   docker buildx imagetools inspect postgres:15-alpine --format '{{.Manifest.Digest}}'
+        # The tag stays in the comment so the next reader knows what the digest is supposed to be.
+        image: postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b
         env:
           POSTGRES_USER: ${{ env.PG_USER }}
           POSTGRES_PASSWORD: ${{ env.PG_PASSWORD }}

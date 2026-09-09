@@ -182,6 +182,11 @@ jobs:
       # On the coverage leg alone, because that is the leg it happens on, and because a second
       # reporter on the leg that already passes buys nothing.
       - name: Tests${{ matrix.coverage && ' + coverage thresholds' || '' }}
+        # zizmor: ignore[template-injection] — `matrix.coverage` is a boolean this workflow sets in
+        # its own `strategy.matrix`, a few lines up. It is not reachable by anyone opening a pull
+        # request, so the expression selects between two literals written here and cannot carry an
+        # attacker-supplied string into the shell. Passing it through `env:` would not make it
+        # safer; it would only move a constant.
         run: ${{ matrix.coverage && 'pnpm test:coverage --reporter=default --reporter=hanging-process' || 'pnpm test' }}
       # Once, not once per leg. `vitest --typecheck.only` runs TypeScript over the `.test-d.ts`
       # files, and its diagnostics come from the TS version, the tsconfig and the sources — all
@@ -464,9 +469,9 @@ jobs:
       - doc-citations
       - license-compliance
     permissions:
-      contents: read
+      contents: read # Read the tree to build the report from.
       # The only write this job needs, and the only one it gets.
-      pull-requests: write
+      pull-requests: write # Post the quality report as a pull-request comment.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
