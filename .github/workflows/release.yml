@@ -58,6 +58,22 @@ jobs:
   release:
     name: Publish release
     needs: release-channel
+    # The environment exists for its DEPLOYMENT BRANCH POLICY, which is restricted to `main`.
+    #
+    # That is not decoration. This workflow carries `workflow_dispatch`, so before the policy
+    # existed anyone with write access could dispatch it from an arbitrary branch and the job
+    # would mint a `theokit-release` App token there. The policy makes the job unrunnable outside
+    # `main`, which is the only branch a release may be cut from anyway.
+    #
+    # What it deliberately does NOT do is gate on a reviewer. `.github/branch-protection.json`
+    # rejects that by name -- a solo-maintainer repository cannot satisfy an approval gate, and a
+    # gate only its author can bypass teaches bypassing.
+    #
+    # The App credentials stay ORGANIZATION secrets rather than moving in here: an org secret
+    # cannot be scoped to a repository environment, and their values are write-only, so nothing
+    # could copy them. The protection bought is the branch policy, not secret isolation -- said
+    # plainly because `environment:` is easy to mistake for the second.
+    environment: release
     # Named for the reason given on `release-channel` above: this job builds and publishes the
     # artifact consumers install.
     runs-on: ubuntu-24.04
