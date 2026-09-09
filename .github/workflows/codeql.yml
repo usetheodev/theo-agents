@@ -44,9 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      actions: read
-      contents: read
-      security-events: write
+      actions: read # CodeQL reads workflow run metadata to scope the analysis.
+      contents: read # Check out the tree to be scanned; nothing here writes to it.
+      security-events: write # The only write, and the reason the job exists: upload the SARIF.
 
     strategy:
       fail-fast: false
@@ -91,8 +91,16 @@ jobs:
     # configured and cannot report here".
     steps:
       - name: Report whether CodeQL could run
+        # Through `env:` rather than interpolated into the script, so the shell receives a VARIABLE
+        # instead of a value pasted into its source. Nothing attacker-controlled reaches this
+        # particular expression — `repository.private` is a boolean GitHub sets from repository
+        # settings — so this is not a fix for a live vulnerability. It is the same discipline
+        # applied uniformly: the alternative was suppressing the warning, and a suppression is a
+        # standing exception a reader has to re-audit, where this leaves nothing to except.
+        env:
+          REPO_IS_PRIVATE: ${{ github.event.repository.private }}
         run: |
-          if [ "${{ github.event.repository.private }}" = "true" ]; then
+          if [ "$REPO_IS_PRIVATE" = "true" ]; then
             echo "::warning::CodeQL analysis SKIPPED — this repository is private and CodeQL's"\
               "upload needs GitHub Advanced Security. The scan is configured and will run as soon"\
               "as GHAS is enabled or the repository becomes public. Until then it is skipped"\

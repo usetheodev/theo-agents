@@ -10,11 +10,26 @@ on:
   pull_request_review:
     types: [submitted]
 
+# Serialized per thread, NOT cancelled. Two `@claude` mentions on the same pull request are two
+# requests somebody made, so cancelling the first discards work that was asked for — the argument
+# `cancel-in-progress: true` wins on a CI leg does not transfer to a bot. What this DOES prevent is
+# two runs acting on one pull request at the same time, which is the hazard: both read the same head,
+# both act, and the second silently overwrites the first's conclusion.
+#
+# The key falls back across triggers because the four events put the number in different places:
+# `issue_comment` (including on a PR) carries `issue.number`; the two review events carry
+# `pull_request.number`. Without the fallback every review event would share one group.
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
 permissions:
+  # Floor for the whole file; the job below widens it for itself and nothing else inherits.
   contents: read
 
 jobs:
   claude:
+    name: Claude Code
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
@@ -23,10 +38,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-      id-token: write
+      contents: read # Read the checked-out tree; this job never pushes.
+      pull-requests: read # Read PR bodies and review comments that mention @claude.
+      issues: read # Same, for the `issues` and `issue_comment` triggers.
+      id-token: write # OIDC only — this mints a short-lived identity token, not a write scope.
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
@@ -41,6 +56,15 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@dcb57747bfceeaa1fa72638cae52295d1d853d4a # v1
         with:
+          # zizmor: ignore[secrets-outside-env] -- an environment would buy nothing HERE, and the
+          # reasoning is the trigger set rather than convenience. `issue_comment`, `issues` and the
+          # two review events all run the workflow from the DEFAULT branch, so there is no other
+          # branch for a deployment branch policy to exclude -- unlike `release.yml`, which carries
+          # `workflow_dispatch` and is genuinely dispatchable from anywhere, and which therefore
+          # does declare one. Moving the token to environment scope is the other half an
+          # environment can buy, and it is impossible: secret values are write-only, so nothing can
+          # copy this one into an environment. Declaring `environment:` anyway would silence this
+          # warning while changing nothing a reader could point at.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
           # This is an optional setting that allows Claude to read CI results on PRs

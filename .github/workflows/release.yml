@@ -10,7 +10,17 @@ on:
     branches: [main]
   workflow_dispatch:
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+# Written in map form only to state the second line. The scalar form defaults to
+# `cancel-in-progress: false`, which is already what a release needs — but the default is silent,
+# and a linter that cannot tell "chose false" from "never considered it" flags it on every audit.
+#
+# `false` is the whole point here, and it is the opposite of the CI legs. Cancelling a superseded
+# CI run discards a verdict nobody will read. Cancelling a superseded RELEASE run discards a
+# half-finished publish: versions bumped and committed but not published, or published to npm
+# with no tag and no GitHub release. There is no run to supersede this one that is worth that.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 # tsup builds DTS for theokit's ~24 entrypoints in a worker; the runner's default
 # heap OOMs it (ERR_WORKER_OUT_OF_MEMORY). Raise the heap workflow-wide so the
@@ -28,7 +38,14 @@ jobs:
   # `changeset pre exit`, with the publish reporting success.
   release-channel:
     name: release channel
-    runs-on: ubuntu-latest
+    # Named, not `ubuntu-latest`, because this file publishes. A runner label is a moving
+    # reference in the same sense as an action tag: `ubuntu-latest` moved 22.04 -> 24.04 under
+    # every repository that used it, and the builds that broke were the ones depending on a
+    # toolchain version they never named. Read from a real run rather than assumed -- the job log
+    # of run 34288858470 reports `Image: ubuntu-24.04`, so this is a no-op today and a bound on
+    # the next migration. It does NOT make the build reproducible: the image behind `24.04` is
+    # rebuilt weekly. It bounds the change to a patch level.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -39,13 +56,32 @@ jobs:
       - uses: usetheokit/shared-workflows/actions/release-channel@v1 # zizmor: ignore[unpinned-uses]
 
   release:
+    name: Publish release
     needs: release-channel
-    runs-on: ubuntu-latest
+    # The environment exists for its DEPLOYMENT BRANCH POLICY, which is restricted to `main`.
+    #
+    # That is not decoration. This workflow carries `workflow_dispatch`, so before the policy
+    # existed anyone with write access could dispatch it from an arbitrary branch and the job
+    # would mint a `theokit-release` App token there. The policy makes the job unrunnable outside
+    # `main`, which is the only branch a release may be cut from anyway.
+    #
+    # What it deliberately does NOT do is gate on a reviewer. `.github/branch-protection.json`
+    # rejects that by name -- a solo-maintainer repository cannot satisfy an approval gate, and a
+    # gate only its author can bypass teaches bypassing.
+    #
+    # The App credentials stay ORGANIZATION secrets rather than moving in here: an org secret
+    # cannot be scoped to a repository environment, and their values are write-only, so nothing
+    # could copy them. The protection bought is the branch policy, not secret isolation -- said
+    # plainly because `environment:` is easy to mistake for the second.
+    environment: release
+    # Named for the reason given on `release-channel` above: this job builds and publishes the
+    # artifact consumers install.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
+      contents: write # Commit the version bump and create the git tag.
+      pull-requests: write # Open and update the "Version Packages" pull request.
+      id-token: write # OIDC for npm trusted publishing — this is what replaces NPM_TOKEN.
     steps:
       # Actions pinned by commit SHA rather than by ref, because this job publishes as this
       # organization and a moving ref decides what runs here. `changesets/action@v1` was the
