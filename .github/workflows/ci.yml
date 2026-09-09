@@ -11,11 +11,28 @@ on:
   # for the push and `refs/pull/N/merge` for the pull request, so the two land in different groups
   # by construction.
   #
-  # Dropping the push loses no verdict. Every commit reaching `develop` arrives through a
-  # `workspace -> develop` pull request that ran this workflow, and immediately becomes the head of
-  # the `develop -> main` pull request that runs it again. A direct push to `develop` -- the only
-  # path that would slip through -- is forbidden by `rules/git-safety.md` and blocked by
-  # `validate-command.sh`.
+  # WHAT THIS COSTS, corrected after the fact rather than left as first written. The claim here
+  # was "dropping the push loses no verdict", measured over 100 runs which contained zero
+  # counter-examples. Re-measured over 1000 runs across seven days, `develop` took 17 pushes and
+  # FIVE of them had no pull-request run on the same SHA -- all five the merge commit of a
+  # `workspace -> develop` promotion. So a verdict IS lost, on that commit, and the first
+  # measurement was too small to see it.
+  #
+  # What survives the correction is why the loss is narrow. A `pull_request` run tests
+  # `refs/pull/N/merge` -- head already merged into base -- so the TREE a merge commit carries was
+  # validated before the merge; tree `007672610` was measured identical across the workspace pull
+  # request, this push, the promotion pull request and the main push. What goes unverified is the
+  # merge commit as its own object, and only until the next pull request in or out of `develop`
+  # re-validates the branch. Nothing deploys from `develop`; releases cut from `main`, behind the
+  # promotion pull request that does run these checks.
+  #
+  # The residual case is a stale pull request merging into a moved `develop` -- branch protection
+  # here sets `strict: false`, so the merge result need not be the combination that was tested.
+  # `strict: true` would close it, at the cost of forcing an update before every merge. That
+  # trade is not made here; it is named so the next reader can make it deliberately.
+  #
+  # A direct push to `develop` -- the other path that would slip through -- is forbidden by
+  # `rules/git-safety.md` and blocked by `validate-command.sh`.
   #
   # `main` stays: SonarQube measures new code against its analysis of the default branch, and that
   # baseline comes from these runs.
