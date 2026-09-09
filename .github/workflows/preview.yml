@@ -62,8 +62,17 @@ on:
 
 permissions: {}
 
+# Keyed on the COMMIT, not the ref. A push to `workspace` and the `workspace -> develop` pull
+# request that carries the same commit are two events with two refs -- `refs/heads/workspace` and
+# `refs/pull/N/merge` -- so a ref-keyed group put them in different buckets and both produced a
+# preview of identical content. Measured: runs 2 seconds apart on the same head SHA.
+#
+# Collapsing them is safe here in a way it is NOT safe in `ci.yml`: a cancelled preview loses a
+# convenience artifact, where a cancelled CI run leaves a commit with no verdict. The pull-request
+# run is the one that survives (it starts later) and it is the better of the two -- it comments on
+# the pull request, where the push run only moves a `@workspace` tag.
 concurrency:
-  group: preview-${{ github.ref }}
+  group: preview-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:

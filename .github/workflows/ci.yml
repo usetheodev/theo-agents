@@ -1,8 +1,31 @@
 name: CI
 
 on:
+  # `main` only. `develop` was here and was pure duplication, measured rather than reasoned: of the
+  # last 40 CI runs, SIX commits ran this workflow twice on the identical head SHA -- once from the
+  # push that merged `workspace -> develop`, once from the `develop -> main` promotion pull request
+  # opened seconds later. Four of the six pairs started within 33 seconds of each other, and each
+  # run bills ~29 minutes.
+  #
+  # `concurrency` cannot collapse them: it is keyed on `github.ref`, which is `refs/heads/develop`
+  # for the push and `refs/pull/N/merge` for the pull request, so the two land in different groups
+  # by construction.
+  #
+  # Dropping the push loses no verdict. Every commit reaching `develop` arrives through a
+  # `workspace -> develop` pull request that ran this workflow, and immediately becomes the head of
+  # the `develop -> main` pull request that runs it again. A direct push to `develop` -- the only
+  # path that would slip through -- is forbidden by `rules/git-safety.md` and blocked by
+  # `validate-command.sh`.
+  #
+  # `main` stays: SonarQube measures new code against its analysis of the default branch, and that
+  # baseline comes from these runs.
+  #
+  # THE COST, stated rather than discovered: Actions caches are scoped per branch, and pull requests
+  # read the base branch's cache. `develop` no longer writes one, so a `workspace -> develop` pull
+  # request may restore a colder pnpm store. Setup measured 30s of a 409s job with the cache warm;
+  # the ceiling on this regression is that step, against ~29 minutes saved per promotion.
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     # Both promotion legs are pull requests — workspace -> develop and develop -> main — so
     # both bases belong here. Until 2026-08-19 only `main` was listed, so the nine quality

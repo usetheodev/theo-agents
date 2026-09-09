@@ -6,8 +6,13 @@ name: Postgres Jobs CI
 # shape locally; this workflow validates concurrent-dequeue semantics.
 
 on:
+  # `main` only -- `develop` was duplication. A commit landing on `develop` is validated by the
+  # `workspace -> develop` pull request that carried it and again by the `develop -> main` pull
+  # request opened seconds later, and `concurrency` cannot collapse the pair because it keys on
+  # `github.ref`. Measured on `ci.yml`, where the same duplication costs ~29 minutes a time; the
+  # reasoning and the cache caveat are written out there.
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main, develop]
     paths:
@@ -26,6 +31,7 @@ concurrency:
 
 jobs:
   postgres-integration:
+    name: Postgres integration (SKIP LOCKED)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

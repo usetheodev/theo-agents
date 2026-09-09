@@ -49,6 +49,7 @@ jobs:
       - uses: usetheokit/shared-workflows/actions/release-channel@v1 # zizmor: ignore[unpinned-uses]
 
   release:
+    name: Publish release
     needs: release-channel
     runs-on: ubuntu-latest
     timeout-minutes: 30
