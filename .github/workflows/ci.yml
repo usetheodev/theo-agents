@@ -1,8 +1,31 @@
 name: CI
 
 on:
+  # `main` only. `develop` was here and was pure duplication, measured rather than reasoned: of the
+  # last 40 CI runs, SIX commits ran this workflow twice on the identical head SHA -- once from the
+  # push that merged `workspace -> develop`, once from the `develop -> main` promotion pull request
+  # opened seconds later. Four of the six pairs started within 33 seconds of each other, and each
+  # run bills ~29 minutes.
+  #
+  # `concurrency` cannot collapse them: it is keyed on `github.ref`, which is `refs/heads/develop`
+  # for the push and `refs/pull/N/merge` for the pull request, so the two land in different groups
+  # by construction.
+  #
+  # Dropping the push loses no verdict. Every commit reaching `develop` arrives through a
+  # `workspace -> develop` pull request that ran this workflow, and immediately becomes the head of
+  # the `develop -> main` pull request that runs it again. A direct push to `develop` -- the only
+  # path that would slip through -- is forbidden by `rules/git-safety.md` and blocked by
+  # `validate-command.sh`.
+  #
+  # `main` stays: SonarQube measures new code against its analysis of the default branch, and that
+  # baseline comes from these runs.
+  #
+  # THE COST, stated rather than discovered: Actions caches are scoped per branch, and pull requests
+  # read the base branch's cache. `develop` no longer writes one, so a `workspace -> develop` pull
+  # request may restore a colder pnpm store. Setup measured 30s of a 409s job with the cache warm;
+  # the ceiling on this regression is that step, against ~29 minutes saved per promotion.
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     # Both promotion legs are pull requests — workspace -> develop and develop -> main — so
     # both bases belong here. Until 2026-08-19 only `main` was listed, so the nine quality
@@ -182,6 +205,11 @@ jobs:
       # On the coverage leg alone, because that is the leg it happens on, and because a second
       # reporter on the leg that already passes buys nothing.
       - name: Tests${{ matrix.coverage && ' + coverage thresholds' || '' }}
+        # zizmor: ignore[template-injection] — `matrix.coverage` is a boolean this workflow sets in
+        # its own `strategy.matrix`, a few lines up. It is not reachable by anyone opening a pull
+        # request, so the expression selects between two literals written here and cannot carry an
+        # attacker-supplied string into the shell. Passing it through `env:` would not make it
+        # safer; it would only move a constant.
         run: ${{ matrix.coverage && 'pnpm test:coverage --reporter=default --reporter=hanging-process' || 'pnpm test' }}
       # Once, not once per leg. `vitest --typecheck.only` runs TypeScript over the `.test-d.ts`
       # files, and its diagnostics come from the TS version, the tsconfig and the sources — all
@@ -464,9 +492,9 @@ jobs:
       - doc-citations
       - license-compliance
     permissions:
-      contents: read
+      contents: read # Read the tree to build the report from.
       # The only write this job needs, and the only one it gets.
-      pull-requests: write
+      pull-requests: write # Post the quality report as a pull-request comment.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
